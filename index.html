@@ -84,7 +84,7 @@ const {useState,useEffect,useRef,useCallback}=React;
     const auth=window._auth, db=window._db;
 
     const MILK_TYPES=[
-      {label:"🤱 Breast", value:"Breast Milk", color:"#FF6B9D"},
+      {label:"🤱 Breast Milk", value:"Breast Milk", color:"#FF6B9D"},
       {label:"🥛 Formula",value:"Formula Milk",color:"#6B9DFF"},
       {label:"🔀 Mixed",  value:"Mixed",       color:"#A78BFA"},
       {label:"🫦 Sucking",value:"Sucking",     color:"#F59E0B"},
@@ -273,7 +273,7 @@ const {useState,useEffect,useRef,useCallback}=React;
         <div className="fade-in" style={wrap}>
           <div style={{fontSize:72,marginBottom:8}}>🍼</div>
           <div style={{fontSize:28,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>BabyFeed</div>
-          <div style={{fontSize:14,color:"#AAA",marginBottom:48,textAlign:"center"}}>Track feeds · Stay in sync</div>
+          <div style={{fontSize:14,color:"#AAA",marginBottom:48,textAlign:"center"}}>{"Track feeds · Stay in sync"}</div>
           <div style={{width:"100%",maxWidth:340,display:"flex",flexDirection:"column",gap:12}}>
             <button onClick={googleSignIn} disabled={loading} style={{width:"100%",padding:"16px",background:"#fff",border:"2px solid #EDE8F8",borderRadius:18,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#1a1a2e",display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
               <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.6 0 6.6 5.5 2.6 13.5l7.8 6C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.5 2.8-2.2 5.2-4.7 6.8l7.3 5.7c4.3-4 6.8-9.9 6.8-16.5z"/><path fill="#FBBC05" d="M10.4 28.5A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.9-4.5l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6.2z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.3-5.7c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.7-13.6-9l-7.8 6C6.6 42.5 14.6 48 24 48z"/></svg>
@@ -455,6 +455,8 @@ const {useState,useEffect,useRef,useCallback}=React;
           setBabies(snap.docs.map(d=>({...d.data(),id:d.id})));
           setReady(true);
         }));
+        // Fallback: unblock app after 5s if Firestore is slow or offline
+        setTimeout(()=>setReady(r=>r||true),5000);
         uns.push(db.collection(`families/${familyId}/logs`).orderBy("timestamp","desc").limit(500).onSnapshot(snap=>{
           setLogs(snap.docs.map(d=>({...d.data(),id:d.id})));
         }));
@@ -727,10 +729,10 @@ const {useState,useEffect,useRef,useCallback}=React;
             {[{l:"3d",v:3},{l:"7d",v:7},{l:"14d",v:14},{l:"1M",v:30},{l:"3M",v:90},{l:"1Y",v:365}].map(o=><button key={o.l} onClick={()=>setRange(o.v)} style={{flex:1,minWidth:"calc(33% - 6px)",padding:"9px 4px",background:range===o.v?"#7C5CBF":T.bg2,border:"none",borderRadius:12,color:range===o.v?"#fff":T.text2,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>{o.l}</button>)}
           </div>
           <div style={{display:"flex",gap:10,marginBottom:14}}>
-            {babies.map(b=>{const s=stats(b.id);return(<div key={b.id} style={{flex:1,background:T.bg2,borderRadius:18,padding:"14px",borderTop:`4px solid ${b.color}`}}><div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:8}}>{b.name}</div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{s.avg}<span style={{fontSize:11,color:T.text3,fontWeight:500}}>ml/day</span></div><div style={{fontSize:11,color:T.text3,marginTop:4}}>{s.feeds} feeds · ~{s.apf}ml each</div>{s.ai>0&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>avg every {s.ai>=60?`${Math.floor(s.ai/60)}h ${s.ai%60}m`:`${s.ai}m`}</div>}</div>);})}
+            {babies.map(b=>{const s=stats(b.id);return(<div key={b.id} style={{flex:1,background:T.bg2,borderRadius:18,padding:"14px",borderTop:`4px solid ${b.color}`}}><div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:8}}>{b.name}</div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{s.avg}<span style={{fontSize:11,color:T.text3,fontWeight:500}}>ml/day</span></div><div style={{fontSize:11,color:T.text3,marginTop:4}}>{s.feeds}{" feeds · ~"}{s.apf}{"ml each"}</div>{s.ai>0&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>avg every {s.ai>=60?`${Math.floor(s.ai/60)}h ${s.ai%60}m`:`${s.ai}m`}</div>}</div>);})}
           </div>
           <C ch={<><SectionTitle t={`${gm==="day"?"Daily":gm==="week"?"Weekly":"Monthly"} Intake — ${rl}`}/><div style={{display:"flex",alignItems:"flex-end",gap:gm==="month"?6:3,height:120,overflowX:"auto",paddingBottom:2}}>{cd.map((d,i)=><div key={i} style={{flexShrink:0,minWidth:gm==="day"?0:36,flex:gm==="day"?1:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><div style={{fontSize:8,color:T.text3,fontWeight:600,marginBottom:2}}>{d.total>0?d.total:""}</div><div style={{width:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",height:90,gap:1}}>{babies.map(b=>{const h=d[b.id]>0?Math.max(4,Math.round(d[b.id]/mb*90)):0;return h>0?<div key={b.id} style={{width:"100%",height:h,background:b.color,borderRadius:4,opacity:.85}}/>:null;})}</div><div style={{fontSize:8,color:T.text3,fontWeight:700,marginTop:4,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div></div>)}</div><div style={{display:"flex",gap:12,marginTop:12,justifyContent:"center"}}>{babies.map(b=><div key={b.id} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:3,background:b.color}}/><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{b.name}</span></div>)}</div></>}/>
-          <C ch={<><SectionTitle t="Milk Type Breakdown"/>{babies.map(b=>{const bd=mkbd(b.id);return bd.length===0?<div key={b.id} style={{fontSize:12,color:T.text3,marginBottom:12}}>{b.name}: no data</div>:(<div key={b.id} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:b.color,marginBottom:8}}>{b.name}</div>{bd.map(m=><div key={m.value} style={{marginBottom:6}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{m.label}</span><span style={{fontSize:11,color:m.color,fontWeight:800}}>{m.p}% · {m.a}ml</span></div><div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}><div style={{height:"100%",width:`${m.p}%`,background:m.color,borderRadius:6,transition:"width 0.4s"}}/></div></div>)}</div>);})}</>}/>
+          <C ch={<><SectionTitle t="Milk Type Breakdown"/>{babies.map(b=>{const bd=mkbd(b.id);return bd.length===0?<div key={b.id} style={{fontSize:12,color:T.text3,marginBottom:12}}>{b.name}: no data</div>:(<div key={b.id} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:b.color,marginBottom:8}}>{b.name}</div>{bd.map(m=><div key={m.value} style={{marginBottom:6}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{m.label}</span><span style={{fontSize:11,color:m.color,fontWeight:800}}>{m.p}{"% · "}{m.a}{"ml"}</span></div><div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}><div style={{height:"100%",width:`${m.p}%`,background:m.color,borderRadius:6,transition:"width 0.4s"}}/></div></div>)}</div>);})}</>}/>
           {babies.length>1&&<C ch={<><SectionTitle t="Baby Comparison"/>{(()=>{const st=babies.map(b=>({...b,...stats(b.id)}));return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{[{k:"total",l:"Total intake",s:"ml",mx:Math.max(...st.map(x=>x.total),1)},{k:"feeds",l:"Total feeds",s:"",mx:Math.max(...st.map(x=>x.feeds),1)},{k:"apf",l:"Avg per feed",s:"ml",mx:Math.max(...st.map(x=>x.apf),1)}].map(m=><div key={m.k}><div style={{fontSize:11,color:T.text2,fontWeight:700,marginBottom:6}}>{m.l}</div>{st.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}><div style={{width:36,fontSize:11,fontWeight:800,color:s.color,flexShrink:0}}>{s.name.split(" ")[0]}</div><div style={{flex:1,background:T.bg3,borderRadius:6,height:10,overflow:"hidden"}}><div style={{height:"100%",width:`${s[m.k]/m.mx*100}%`,background:s.color,borderRadius:6}}/></div><div style={{fontSize:11,fontWeight:800,color:T.text2,width:50,textAlign:"right"}}>{s[m.k]}{m.s}</div></div>)}</div>)}</div>);})()}</>}/>}
           <C ch={<><SectionTitle t={`Feeding Heatmap — ${rl}`}/><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{hm.map((c,h)=>{const iv=c/mh,bg=iv===0?T.bg3:`rgba(124,92,191,${0.15+iv*0.85})`;const label=h===0?"12AM":h<12?`${h}AM`:h===12?"12PM":`${h-12}PM`;return<div key={h} title={label} style={{width:"calc(12.5% - 4px)",aspectRatio:"1",borderRadius:8,background:bg,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:7,color:iv>.5?"#fff":T.text3,fontWeight:700,textAlign:"center",lineHeight:1.1}}>{label}</span></div>;})}</div><div style={{display:"flex",gap:4,marginTop:10,alignItems:"center",justifyContent:"center"}}><span style={{fontSize:10,color:T.text3}}>Less</span>{[.1,.3,.55,.75,1].map(v=><div key={v} style={{width:14,height:14,borderRadius:4,background:`rgba(124,92,191,${0.15+v*0.85})`}}/>)}<span style={{fontSize:10,color:T.text3}}>More</span></div></>}/>
         </div>
@@ -832,7 +834,7 @@ const {useState,useEffect,useRef,useCallback}=React;
               <div key={bid} style={{background:T.dark?"#2D2010":"#FFF8E7",border:"2px solid #F59E0B44",borderRadius:18,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",gap:12}}>
                 <span style={{fontSize:28}}>🫦</span>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:11,color:"#92660A",fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{b?.name} · Sucking</div>
+                  <div style={{fontSize:11,color:"#92660A",fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{b?.name}{" · Sucking"}</div>
                   <div style={{fontSize:22,fontWeight:900,color:"#F59E0B"}}>{fmtDur(Math.round((nowMs-suckingActive[bid].startMs)/1000))}</div>
                 </div>
                 <button onClick={()=>onFinishSucking(bid)} style={{padding:"10px 18px",background:"#F59E0B",border:"none",borderRadius:14,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Finish</button>
@@ -845,7 +847,7 @@ const {useState,useEffect,useRef,useCallback}=React;
               <div key={bid} style={{background:T.dark?"#101A2D":"#EFF6FF",border:"2px solid #60A5FA44",borderRadius:18,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",gap:12}}>
                 <span style={{fontSize:28}}>😴</span>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:11,color:"#1D4ED8",fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{b?.name} · Sleeping</div>
+                  <div style={{fontSize:11,color:"#1D4ED8",fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{b?.name}{" · Sleeping"}</div>
                   <div style={{fontSize:22,fontWeight:900,color:"#60A5FA"}}>{fmtDur(Math.round((nowMs-sleepActive[bid].startMs)/1000))}</div>
                 </div>
                 <button onClick={()=>onFinishSleep(bid)} style={{padding:"10px 18px",background:"#60A5FA",border:"none",borderRadius:14,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Finish</button>
@@ -864,7 +866,7 @@ const {useState,useEffect,useRef,useCallback}=React;
                 <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>😴 Sleep</div>
                 {sleepActive[b.id]?(
                   <button onClick={()=>onFinishSleep(b.id)} style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#60A5FA,#3B82F6)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>
-                    ✓ Finish Sleep · {fmtDur(Math.round((nowMs-sleepActive[b.id].startMs)/1000))}
+                    {"✓ Finish Sleep · "}{fmtDur(Math.round((nowMs-sleepActive[b.id].startMs)/1000))}
                   </button>
                 ):(
                   <div>
@@ -950,7 +952,7 @@ const {useState,useEffect,useRef,useCallback}=React;
                     <div style={{flex:1}}>
                       <div style={{fontWeight:900,color:T.text,fontSize:15}}>{actLabel(a)}</div>
                       <div style={{fontSize:12,color:T.text3,marginTop:2}}>
-                        {b?.name} · {fmt(a.startTime)}
+                        {b?.name}{" · "}{fmt(a.startTime)}
                         {a.loggedBy&&<span style={{marginLeft:6,background:T.dark?"#2D1F45":"#F0EBF8",color:"#A78BFA",fontWeight:700,padding:"1px 7px",borderRadius:6,fontSize:11}}>👤 {a.loggedBy}</span>}
                       </div>
                     </div>
@@ -1020,7 +1022,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [view,setView]=useState("log");
       const [viewAnim,setViewAnim]=useState(false);
       function switchView(v){setViewAnim(true);setTimeout(()=>{setView(v);setViewAnim(false);},80);}
-      const VIEWS=["log","activity","insights","history","dashboard"];
+      const VIEWS=["log","dashboard","history","insights"];
       const swipeStart=React.useRef(null);
       function onTouchStart(e){swipeStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};}
       function onTouchEnd(e){
@@ -1065,6 +1067,14 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [editLogBaby,setEditLogBaby]=useState("");
       const [editLogTime,setEditLogTime]=useState("");
       const [historyFilter,setHistoryFilter]=useState("all"); // "all" or babyId
+      const [historyTypeFilter,setHistoryTypeFilter]=useState("all");
+      const [manualSleepLog,setManualSleepLog]=useState({});
+      const [logDiaperFlash,setLogDiaperFlash]=useState({});
+      const [editActInHistory,setEditActInHistory]=useState(null);
+      const [editActStart,setEditActStart]=useState("");
+      const [editActEnd,setEditActEnd]=useState("");
+      const [editActDiaper,setEditActDiaper]=useState("");
+      const [confirmDelActHistory,setConfirmDelActHistory]=useState(null);
       const [confirmDeleteLog,setConfirmDeleteLog]=useState(null);
       const [miniOpen,setMiniOpen]=useState({}); // {babyId: bool}
       // ── Activity tab state ──
@@ -1292,14 +1302,10 @@ const {useState,useEffect,useRef,useCallback}=React;
                   {view==="insights"?"← Log":"💡"}
                   {urgentCount>0&&view!=="insights"&&<span style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:"#FF4D6D"}}/>}
                 </button>
-                <button onClick={()=>setView(v=>v==="dashboard"?"log":"dashboard")} style={{background:view==="dashboard"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="dashboard"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="dashboard"?"← Log":"📊"}</button>
-                <button onClick={()=>setView(v=>v==="activity"?"log":"activity")} style={{position:"relative",background:view==="activity"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="activity"?"#34D399":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
-                  {view==="activity"?"← Log":"🏃"}
-                  {(Object.keys(suckingActive).length>0||Object.keys(sleepActive).length>0)&&view!=="activity"&&<span style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:"#34D399"}}/>}
-                </button>
-                <button onClick={()=>setView(v=>v==="history"?"log":"history")} style={{background:view==="history"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="history"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="history"?"← Log":"📋"}</button>
+                <button onClick={()=>switchView("dashboard")} style={{background:view==="dashboard"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="dashboard"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="dashboard"?"← Log":"📊"}</button>
+                <button onClick={()=>switchView("insights")} style={{background:view==="insights"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="insights"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="insights"?"← Log":"💡"}</button>
+                <button onClick={()=>switchView("history")} style={{background:view==="history"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="history"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="history"?"← Log":"📋"}</button>
                 <button onClick={toggleTheme} title="Toggle dark mode" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{dark?"☀️":"🌙"}</button>
-                <button onClick={toggleUnit} title="Toggle units" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:T.text2}}>{unit==="ml"?"ml":"oz"}</button>
                 <button onClick={()=>setShowPartner(true)} title="Invite care team" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🤝</button>
                 <button onClick={()=>auth.signOut()} title="Sign out" style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:900}}>
                   {(user.displayName||user.email||"U")[0].toUpperCase()}
@@ -1337,7 +1343,7 @@ const {useState,useEffect,useRef,useCallback}=React;
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <span style={{fontSize:18}}>{td?"🔔":"⏰"}</span>
                         <div>
-                          <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Timer · every {tlabel(at)}</div>
+                          <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>{"Timer · every "}{tlabel(at)}</div>
                           <div style={{fontSize:td?17:22,fontWeight:900,color:td?"#FF4D6D":ab.color,marginTop:2}}>{cms!==null?countdown(cms):"—"}</div>
                           {!td&&nfms&&<div style={{fontSize:11,color:T.text3,marginTop:1}}>Next at {fmt(new Date(nfms).toISOString())}</div>}
                         </div>
@@ -1414,18 +1420,50 @@ const {useState,useEffect,useRef,useCallback}=React;
                 {ll&&<button onClick={()=>logFeed(ll.amount,ll.milkType)} style={{width:"100%",padding:"15px",background:T.bg2,border:`2px solid ${T.bord}`,borderRadius:18,color:T.text2,fontSize:14,cursor:"pointer",fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:10}}><span>↩</span><span>Repeat last — <span style={{color:mc,fontWeight:900}}>{ll.amount}ml {ll.milkType.split(" ")[0]}</span></span></button>}
                 {!at?.enabled&&<button onClick={()=>openSheet(activeBabyId)} style={{width:"100%",padding:"14px",background:T.bg2,border:`2px dashed ${T.bord}`,borderRadius:18,color:T.text3,fontSize:14,cursor:"pointer",fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>⏰ Set Feeding Timer</button>}
               </div>
+              {/* Sleep */}
+              <div style={{marginTop:16}}>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>😴 Sleep</div>
+                {sleepActive[activeBabyId]?(
+                  <button onClick={()=>finishSleep(activeBabyId)} style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#60A5FA,#3B82F6)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>
+                    {"✓ Finish Sleep · "}{fmtDur(Math.round((nowMs-sleepActive[activeBabyId].startMs)/1000))}
+                  </button>
+                ):(
+                  <div>
+                    {!manualSleepLog[activeBabyId]?(
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>startSleep(activeBabyId)} style={{flex:1,padding:"13px",background:T.bg2,border:`2px dashed ${T.bord}`,borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>▶ Start Sleep</button>
+                        <button onClick={()=>setManualSleepLog(s=>({...s,[activeBabyId]:{startVal:new Date(Date.now()-30*60000).toISOString().slice(0,16),endVal:new Date().toISOString().slice(0,16)}}))} style={{padding:"13px 14px",background:T.bg2,border:`2px dashed ${T.bord}`,borderRadius:14,color:T.text3,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>✏️ Log past</button>
+                      </div>
+                    ):(
+                      <div style={{background:T.bg2,borderRadius:14,padding:"14px"}}>
+                        <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.8}}>Log Past Sleep</div>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>Fell asleep</div>
+                        <input type="datetime-local" value={manualSleepLog[activeBabyId]?.startVal||""} onChange={e=>setManualSleepLog(s=>({...s,[activeBabyId]:{...s[activeBabyId],startVal:e.target.value}}))} style={{width:"100%",padding:"9px 12px",border:`2px solid ${T.bord}`,borderRadius:10,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:8}}/>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>Woke up</div>
+                        <input type="datetime-local" value={manualSleepLog[activeBabyId]?.endVal||""} onChange={e=>setManualSleepLog(s=>({...s,[activeBabyId]:{...s[activeBabyId],endVal:e.target.value}}))} style={{width:"100%",padding:"9px 12px",border:`2px solid ${T.bord}`,borderRadius:10,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:10}}/>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={()=>setManualSleepLog(s=>{const n={...s};delete n[activeBabyId];return n;})} style={{flex:1,padding:"10px",background:T.bg3,border:"none",borderRadius:10,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                          <button onClick={async()=>{const ms=manualSleepLog[activeBabyId];if(!ms?.startVal||!ms?.endVal)return;const s2=new Date(ms.startVal).getTime(),e2=new Date(ms.endVal).getTime();if(e2<=s2)return;await logSleep(activeBabyId,new Date(ms.startVal).toISOString(),new Date(ms.endVal).toISOString(),Math.round((e2-s2)/1000));setManualSleepLog(s=>{const n={...s};delete n[activeBabyId];return n;});}} style={{flex:2,padding:"10px",background:"linear-gradient(135deg,#60A5FA,#3B82F6)",border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>💾 Save Sleep</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {/* Diaper */}
+              <div style={{marginTop:14}}>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>🩲 Diaper</div>
+                <div style={{display:"flex",gap:8}}>
+                  {DIAPER_TYPES.map(dt=>(
+                    <button key={dt.value} onClick={()=>{logDiaper(activeBabyId,dt.value);setLogDiaperFlash(f=>({...f,[activeBabyId]:dt.value}));setTimeout(()=>setLogDiaperFlash(f=>{const n={...f};delete n[activeBabyId];return n;}),2000);}} style={{flex:1,padding:"11px 4px",background:logDiaperFlash[activeBabyId]===dt.value?dt.color:T.bg2,border:`2px solid ${logDiaperFlash[activeBabyId]===dt.value?dt.color:T.bord}`,borderRadius:14,color:logDiaperFlash[activeBabyId]===dt.value?"#fff":T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s"}}>
+                      {logDiaperFlash[activeBabyId]===dt.value?"✓ Logged!":dt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
-            {view==="activity"&&<ActivityView
-              babies={babies} activities={activities} activeBabyId={activeBabyId}
-              suckingActive={suckingActive} sleepActive={sleepActive}
-              onStartSucking={startSucking} onFinishSucking={finishSucking}
-              onStartSleep={startSleep} onFinishSleep={finishSleep} onLogSleep={logSleep}
-              onLogDiaper={logDiaper}
-              onDeleteActivity={deleteActivity} onUpdateActivity={updateActivity}
-              fmtDur={fmtDur} nowMs={nowMs}
-              activityFilter={activityFilter} setActivityFilter={setActivityFilter}
-            />}
+            
 
             {view==="insights"&&<InsightsView babies={babies} logs={logs}
   onLogFeed={bid=>{setActiveBabyId(bid);setView("log");}}
@@ -1438,99 +1476,149 @@ const {useState,useEffect,useRef,useCallback}=React;
 
             {view==="history"&&(
               <div>
-                <div style={{fontSize:17,fontWeight:900,color:T.text,marginBottom:14}}>Feed History</div>
-                {/* Baby filter tabs */}
+                <div style={{fontSize:17,fontWeight:900,color:T.text,marginBottom:14}}>History</div>
+                <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+                  {[["all","All"],["feeds","Feeds"],["sleep","Sleep"],["diaper","Diaper"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setHistoryTypeFilter(v)} style={{padding:"7px 16px",background:historyTypeFilter===v?"#7C5CBF":T.bg3,border:"none",borderRadius:20,color:historyTypeFilter===v?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+                  ))}
+                </div>
                 {babies.length>1&&(
-                  <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
-                    <button onClick={()=>setHistoryFilter("all")} style={{padding:"7px 16px",background:historyFilter==="all"?"#7C5CBF":T.bg3,border:"none",borderRadius:20,color:historyFilter==="all"?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>All</button>
+                  <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+                    <button onClick={()=>setHistoryFilter("all")} style={{padding:"7px 16px",background:historyFilter==="all"?T.bg4:T.bg3,border:"none",borderRadius:20,color:historyFilter==="all"?T.text:T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>All</button>
                     {babies.map(b=><button key={b.id} onClick={()=>setHistoryFilter(b.id)} style={{padding:"7px 16px",background:historyFilter===b.id?b.color:T.bg3,border:"none",borderRadius:20,color:historyFilter===b.id?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{b.name}</button>)}
                   </div>
                 )}
                 {(()=>{
-                  const filteredLogs=historyFilter==="all"?sl:sl.filter(l=>l.babyId===historyFilter);
-                  const fgr={};filteredLogs.forEach(l=>{const k=fmtDate(l.timestamp);if(!fgr[k])fgr[k]=[];fgr[k].push(l);});
-                  // Sort each group newest first, then sort groups newest first
-                  Object.keys(fgr).forEach(k=>{fgr[k].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));});
-                  const sortedEntries=Object.entries(fgr).sort((a,b)=>new Date(b[1][0].timestamp)-new Date(a[1][0].timestamp));
-                  if(sortedEntries.length===0)return<div style={{textAlign:"center",color:T.text3,padding:"50px 0",fontSize:15}}>No logs yet 🍼</div>;
-                  return sortedEntries.map(([date,dl])=>(
-                    <div key={date} style={{marginBottom:22}}>
-                      <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>{date}</div>
-                      {dl.map(log=>{
-                        const b=babies.find(x=>x.id===log.babyId),m=MILK_TYPES.find(m=>m.value===log.milkType);
-                        const isEditing=editingLog?.log?.id===log.id;
-                        return(
-                          <div key={log.id} style={{background:T.bg2,borderRadius:18,marginBottom:8,overflow:"hidden"}}>
-                            {/* Normal row — tap to edit */}
-                            {!isEditing&&(
-                              <div onClick={()=>{setEditingLog({log});setEditLogAmount(log.amount);setEditLogMilk(log.milkType);setEditLogBaby(b?.name||"");setEditLogTime(new Date(log.timestamp).toISOString().slice(0,16));}} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
-                                <div style={{width:44,height:44,borderRadius:14,background:(b?.color||"#eee")+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:13,fontWeight:900,color:b?.color}}>{b?.name?.[0]||"?"}</span></div>
-                                <div style={{flex:1}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                    <span style={{fontWeight:900,color:T.text,fontSize:16}}>{log.amount}ml</span>
-                                    <span style={{fontSize:11,fontWeight:700,color:m?.color,background:(m?.color||"#eee")+"22",padding:"3px 10px",borderRadius:8}}>{log.milkType.split(" ")[0]}</span>
-                                  </div>
-                                  <div style={{fontSize:12,color:T.text3,marginTop:3}}>
-                                    {b?.name||"Unknown"} · {fmt(log.timestamp)}
-                                    {log.loggedBy&&<span style={{marginLeft:6,background:T.dark?"#2D1F45":"#F0EBF8",color:"#A78BFA",fontWeight:700,padding:"2px 8px",borderRadius:6,fontSize:11}}>👤 {log.loggedBy.split("@")[0]}</span>}
-                                  </div>
-                                </div>
-                                <span style={{fontSize:11,color:T.text3,fontWeight:600}}>✏️</span>
-                              </div>
-                            )}
-                            {/* Expanded edit row */}
-                            {isEditing&&(
-                              <div style={{padding:"16px"}}>
-                                <div style={{fontSize:12,color:T.text3,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:.8}}>✏️ Edit Feed</div>
-                                {/* Time editor */}
-                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Time</div>
-                                <input type="datetime-local" value={editLogTime} onChange={e=>setEditLogTime(e.target.value)}
-                                  style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:12}}/>
-                                {/* Baby selector */}
-                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Baby</div>
-                                <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
-                                  {babies.map(bb=><button key={bb.id} onClick={()=>setEditLogBaby(bb.name)} style={{padding:"6px 14px",background:editLogBaby===bb.name?bb.color:T.bg3,border:"none",borderRadius:12,color:editLogBaby===bb.name?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{bb.name}</button>)}
-                                </div>
-                                {/* Milk type */}
-                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Milk Type</div>
-                                <div style={{display:"flex",gap:6,marginBottom:12}}>
-                                  {MILK_TYPES.map(mt=><button key={mt.value} onClick={()=>setEditLogMilk(mt.value)} style={{flex:1,padding:"8px 4px",background:editLogMilk===mt.value?mt.color:T.bg3,border:"none",borderRadius:12,color:editLogMilk===mt.value?"#fff":T.text2,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{mt.label}</button>)}
-                                </div>
-                                {/* Amount */}
-                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Amount</div>
-                                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,background:T.bg3,borderRadius:14,padding:"8px 12px"}}>
-                                  <button onClick={()=>setEditLogAmount(a=>Math.max(5,Number(a)-5))} style={{width:36,height:36,borderRadius:10,background:T.bg2,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>−</button>
-                                  <input type="number" value={editLogAmount} onChange={e=>setEditLogAmount(e.target.value)} style={{flex:1,textAlign:"center",fontSize:22,fontWeight:900,color:T.text,background:"transparent",border:"none",outline:"none",fontFamily:"inherit"}}/>
-                                  <span style={{fontSize:13,color:T.text3,fontWeight:600}}>ml</span>
-                                  <button onClick={()=>setEditLogAmount(a=>Number(a)+5)} style={{width:36,height:36,borderRadius:10,background:T.bg2,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>+</button>
-                                </div>
-                                {/* Actions */}
-                                <div style={{display:"flex",gap:8}}>
-                                  <button onClick={()=>setEditingLog(null)} style={{flex:1,padding:"10px",background:T.bg3,border:"none",borderRadius:12,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-                                  <button onClick={()=>setConfirmDeleteLog(log)} style={{padding:"10px 16px",background:"#FFF0F3",border:"none",borderRadius:12,color:"#FF4D6D",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑 Delete</button>
-                                  {editingLog.log.editHistory?.length>0&&(
-                                    <div style={{marginBottom:8,padding:"8px 10px",background:T.bg3,borderRadius:8}}>
-                                      <div style={{fontSize:9,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:4}}>Edit History</div>
-                                      {editingLog.log.editHistory.slice(-3).map((h,i)=>(
-                                        <div key={i} style={{fontSize:10,color:T.text3,marginBottom:2}}>
-                                          <span style={{color:"#A78BFA",fontWeight:700}}>{h.by}</span>: {h.changes}
-                                        </div>
-                                      ))}
+                  const feedItems=(historyTypeFilter==="all"||historyTypeFilter==="feeds")
+                    ?sl.filter(l=>historyFilter==="all"||l.babyId===historyFilter).map(l=>({...l,_type:"feed",_time:l.timestamp}))
+                    :[];
+                  const actItems=(historyTypeFilter==="all"||historyTypeFilter==="sleep"||historyTypeFilter==="diaper")
+                    ?activities.filter(a=>{
+                        if(historyFilter!=="all"&&a.babyId!==historyFilter)return false;
+                        if(historyTypeFilter==="sleep")return a.type==="sleep"||a.type==="sucking";
+                        if(historyTypeFilter==="diaper")return a.type==="diaper";
+                        return true;
+                      }).map(a=>({...a,_type:"activity",_time:a.startTime}))
+                    :[];
+                  const all=[...feedItems,...actItems].sort((a,b)=>new Date(b._time)-new Date(a._time));
+                  const groups={};
+                  all.forEach(item=>{const k=fmtDate(item._time);if(!groups[k])groups[k]=[];groups[k].push(item);});
+                  const sortedEntries=Object.entries(groups).sort((a,b)=>new Date(b[1][0]._time)-new Date(a[1][0]._time));
+                  if(sortedEntries.length===0)return<div style={{textAlign:"center",color:T.text3,padding:"50px 0",fontSize:15}}>Nothing here yet 🍼</div>;
+                  return sortedEntries.map(([date,items])=>{
+                    const daySummary=babies.map(b=>{
+                      const bFeeds=items.filter(i=>i._type==="feed"&&i.babyId===b.id);
+                      return{b,count:bFeeds.length,total:bFeeds.reduce((s,i)=>s+i.amount,0)};
+                    }).filter(x=>(historyFilter==="all"||x.b.id===historyFilter)&&x.count>0);
+                    return(
+                      <div key={date} style={{marginBottom:22}}>
+                        <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>{date}</div>
+                        {items.map(item=>{
+                          if(item._type==="feed"){
+                            const b=babies.find(x=>x.id===item.babyId);
+                            const m=MILK_TYPES.find(m=>m.value===item.milkType);
+                            const isEditing=editingLog?.log?.id===item.id;
+                            return(
+                              <div key={item.id} style={{background:T.bg2,borderRadius:18,marginBottom:8,overflow:"hidden"}}>
+                                {!isEditing&&(
+                                  <div onClick={()=>{setEditingLog({log:item});setEditLogAmount(item.amount);setEditLogMilk(item.milkType);setEditLogBaby(b?.name||"");setEditLogTime(new Date(item.timestamp).toISOString().slice(0,16));}} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                                    <div style={{width:44,height:44,borderRadius:14,background:(b?.color||"#eee")+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:13,fontWeight:900,color:b?.color}}>{b?.name?.[0]||"?"}</span></div>
+                                    <div style={{flex:1}}>
+                                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                        <span style={{fontWeight:900,color:T.text,fontSize:16}}>{item.amount}ml</span>
+                                        <span style={{fontSize:11,fontWeight:700,color:m?.color,background:(m?.color||"#eee")+"22",padding:"3px 10px",borderRadius:8}}>{item.milkType==="Breast Milk"?"Breast Milk":item.milkType.split(" ")[0]}</span>
+                                      </div>
+                                      <div style={{fontSize:12,color:T.text3,marginTop:3}}>{b?.name||"Unknown"}{" · "}{fmt(item.timestamp)}{item.loggedBy&&<span style={{marginLeft:6,background:"#F0EBF8",color:"#A78BFA",fontWeight:700,padding:"2px 8px",borderRadius:6,fontSize:11}}>👤 {item.loggedBy.split("@")[0]}</span>}</div>
                                     </div>
-                                  )}
-                                  <button onClick={saveEditLog} style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#7C5CBF,#A78BFA)",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
-                                </div>
+                                    <span style={{fontSize:11,color:T.text3}}>✏️</span>
+                                  </div>
+                                )}
+                                {isEditing&&(
+                                  <div style={{padding:"16px"}}>
+                                    <div style={{fontSize:12,color:T.text3,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:.8}}>✏️ Edit Feed</div>
+                                    <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Time</div>
+                                    <input type="datetime-local" value={editLogTime} onChange={e=>setEditLogTime(e.target.value)} style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:12}}/>
+                                    <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Amount</div>
+                                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,background:T.bg3,borderRadius:14,padding:"8px 12px"}}>
+                                      <button onClick={()=>setEditLogAmount(a=>Math.max(5,Number(a)-5))} style={{width:36,height:36,borderRadius:10,background:T.bg2,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>-</button>
+                                      <input type="number" value={editLogAmount} onChange={e=>setEditLogAmount(e.target.value)} style={{flex:1,textAlign:"center",fontSize:22,fontWeight:900,color:T.text,background:"transparent",border:"none",outline:"none",fontFamily:"inherit"}}/>
+                                      <span style={{fontSize:13,color:T.text3,fontWeight:600}}>ml</span>
+                                      <button onClick={()=>setEditLogAmount(a=>Number(a)+5)} style={{width:36,height:36,borderRadius:10,background:T.bg2,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>+</button>
+                                    </div>
+                                    <div style={{display:"flex",gap:8}}>
+                                      <button onClick={()=>setEditingLog(null)} style={{flex:1,padding:"10px",background:T.bg3,border:"none",borderRadius:12,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                                      <button onClick={()=>setConfirmDeleteLog(item)} style={{padding:"10px 16px",background:"#FFF0F3",border:"none",borderRadius:12,color:"#FF4D6D",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                                      <button onClick={saveEditLog} style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#7C5CBF,#A78BFA)",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            );
+                          } else {
+                            const b=babies.find(x=>x.id===item.babyId);
+                            const ac=item.type==="sleep"?"#60A5FA":item.type==="sucking"?"#F59E0B":DIAPER_TYPES.find(d=>d.value===item.diaperType)?.color||"#A78BFA";
+                            const lbl=item.type==="sleep"?"😴 Sleep":item.type==="sucking"?"🫦 Sucking":item.diaperType==="wet"?"💧 Wet":"💩 Dirty";
+                            function fmtDS2(s){if(!s)return"";const h=Math.floor(s/3600),m2=Math.floor((s%3600)/60);if(h>0)return" · "+h+"h "+m2+"m";if(m2>0)return" · "+m2+"m";return"";}
+                            const isEditingAct=editActInHistory?.id===item.id;
+                            return(
+                              <div key={item.id} style={{background:T.bg2,borderRadius:18,marginBottom:8,overflow:"hidden"}}>
+                                {!isEditingAct&&(
+                                  <div onClick={()=>{setEditActInHistory(item);setEditActStart(item.startTime?new Date(item.startTime).toISOString().slice(0,16):"");setEditActEnd(item.endTime?new Date(item.endTime).toISOString().slice(0,16):"");setEditActDiaper(item.diaperType||"");}} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                                    <div style={{width:44,height:44,borderRadius:14,background:ac+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:22}}>{lbl.split(" ")[0]}</div>
+                                    <div style={{flex:1}}>
+                                      <div style={{fontWeight:900,color:T.text,fontSize:15}}>{lbl}{fmtDS2(item.durationSecs)}</div>
+                                      <div style={{fontSize:12,color:T.text3,marginTop:2}}>{b?.name}{" · "}{fmt(item.startTime||item._time)}</div>
+                                    </div>
+                                    <span style={{fontSize:11,color:T.text3}}>✏️</span>
+                                  </div>
+                                )}
+                                {isEditingAct&&(
+                                  <div style={{padding:"16px"}}>
+                                    <div style={{fontSize:12,color:T.text3,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:.8}}>✏️ Edit {item.type==="diaper"?"Diaper":item.type==="sleep"?"Sleep":"Sucking"}</div>
+                                    <div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>Start</div>
+                                    <input type="datetime-local" value={editActStart} onChange={e=>setEditActStart(e.target.value)} style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:10}}/>
+                                    {item.type!=="diaper"&&<><div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>End</div><input type="datetime-local" value={editActEnd} onChange={e=>setEditActEnd(e.target.value)} style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:10}}/></>}
+                                    {item.type==="diaper"&&(
+                                      <div style={{display:"flex",gap:6,marginBottom:12}}>
+                                        {DIAPER_TYPES.map(dt=><button key={dt.value} onClick={()=>setEditActDiaper(dt.value)} style={{flex:1,padding:"8px 4px",background:editActDiaper===dt.value?dt.color:T.bg3,border:"none",borderRadius:12,color:editActDiaper===dt.value?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{dt.label}</button>)}
+                                      </div>
+                                    )}
+                                    <div style={{display:"flex",gap:8}}>
+                                      <button onClick={()=>setEditActInHistory(null)} style={{flex:1,padding:"10px",background:T.bg3,border:"none",borderRadius:12,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                                      <button onClick={()=>setConfirmDelActHistory(item)} style={{padding:"10px 14px",background:"#FFF0F3",border:"none",borderRadius:12,color:"#FF4D6D",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                                      <button onClick={async()=>{const start=new Date(editActStart).toISOString();const end=editActEnd?new Date(editActEnd).toISOString():item.endTime;const dur=editActEnd&&editActStart?Math.round((new Date(editActEnd)-new Date(editActStart))/1000):item.durationSecs;const upd={...item};if(editActStart)upd.startTime=start;if(editActEnd)upd.endTime=end;if(dur)upd.durationSecs=dur;if(item.type==="diaper"&&editActDiaper)upd.diaperType=editActDiaper;const{id,...data}=upd;await updateActivity(id,data);setEditActInHistory(null);}} style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#34D399,#10B981)",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                        })}
+                        {(historyTypeFilter==="all"||historyTypeFilter==="feeds")&&daySummary.length>0&&(
+                          <div style={{background:T.bg3,borderRadius:12,padding:"10px 14px",marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
+                            {daySummary.map(({b,count,total})=>(
+                              <span key={b.id} style={{fontSize:12,fontWeight:700,color:b.color}}>{b.name}: {count}{" feed"}{count!==1?"s":""}{" · "}{total}{"ml"}</span>
+                            ))}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ));
+                        )}
+                      </div>
+                    );
+                  });
                 })()}
+                {confirmDelActHistory&&(
+                  <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:24}}>
+                    <div style={{background:T.bg2,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:380}}>
+                      <div style={{fontSize:32,marginBottom:12,textAlign:"center"}}>🗑️</div>
+                      <div style={{fontSize:17,fontWeight:900,color:T.text,marginBottom:8,textAlign:"center"}}>Delete this entry?</div>
+                      <div style={{display:"flex",gap:10}}>
+                        <button onClick={()=>setConfirmDelActHistory(null)} style={{flex:1,padding:"13px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                        <button onClick={async()=>{await deleteActivity(confirmDelActHistory.id);setConfirmDelActHistory(null);setEditActInHistory(null);}} style={{flex:1,padding:"13px",background:"#FF4D6D",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            )}          </div>
 
           {/* BOTTOM BAR */}
           <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:T.bg2,borderTop:`1px solid ${T.bord}`,padding:`10px 16px calc(16px + env(safe-area-inset-bottom))`,display:"flex",gap:10}}>

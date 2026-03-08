@@ -6,7 +6,7 @@
 2. Tap the **Share button** (box with arrow at bottom)
 3. Tap **"Add to Home Screen"**
 4. Tap **"Add"**
-5. The app appears on their home screen like a real app! 🎉
+5. The app appears on your home screen. 🎉
 
 ## 📱 How Users Install on Android
 1. Open the link in **Chrome**

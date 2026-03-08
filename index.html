@@ -1,0 +1,1772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="BabyFeed" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#7C5CBF" />
+  <title>BabyFeed 🍼</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%237C5CBF'/%3E%3Ctext y='.9em' font-size='75' x='12'%3E🍼%3C/text%3E%3C/svg%3E" />
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;background:var(--bg);overflow-x:hidden}
+    body{-webkit-font-smoothing:antialiased;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;transition:background 0.3s,color 0.3s}
+    #root{padding-bottom:env(safe-area-inset-bottom)}
+    button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    ::-webkit-scrollbar{display:none}
+    input:focus{outline:none}
+    #splash{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity 0.4s}
+    #splash.hide{opacity:0;pointer-events:none}
+    .spin{width:44px;height:44px;border:4px solid var(--border);border-top-color:#7C5CBF;border-radius:50%;animation:spin 0.7s linear infinite;margin-top:18px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+    .fade-in{animation:fadeIn 0.3s ease forwards}
+    .pin-dot{width:18px;height:18px;border-radius:50%;border:2.5px solid #C5BCD8;transition:all 0.15s}
+    .pin-dot.filled{background:#7C5CBF;border-color:#7C5CBF;transform:scale(1.1)}
+    @keyframes slideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}
+    .undo-toast{animation:slideUp 0.25s ease forwards}
+
+    /* ── THEME VARIABLES ── */
+    :root{
+      --bg:#F6F3FF; --bg2:#fff; --bg3:#F0EBF8; --bg4:#EDE8F8;
+      --text:#1a1a2e; --text2:#888; --text3:#C5BCD8;
+      --border:#EDE8F8; --card:#fff; --input:#fff;
+      --splash-text:#C5BCD8;
+    }
+    body.dark{
+      --bg:#0F0E17; --bg2:#1C1B2E; --bg3:#252438; --bg4:#2E2C45;
+      --text:#F0EEFF; --text2:#AAA; --text3:#5A5880;
+      --border:#2E2C45; --card:#1C1B2E; --input:#252438;
+      --splash-text:#5A5880;
+    }
+    body.dark #splash{background:#0F0E17}
+    body.dark #splash div:nth-child(2){color:#F0EEFF}
+    body.dark #splash div:nth-child(3){color:#5A5880}
+  </style>
+</head>
+<body>
+  <div id="splash">
+    <div style="font-size:64px">🍼</div>
+    <div style="font-size:22px;font-weight:900;color:#1a1a2e;margin-top:12px">BabyFeed</div>
+    <div style="font-size:13px;color:#C5BCD8;margin-top:6px">Loading...</div>
+    <div class="spin"></div>
+  </div>
+  <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    const FIREBASE_CONFIG = {
+      apiKey:            "AIzaSyBgousof5ADkp4PaQoDVVqWFiF7r37ISQA",
+      authDomain:        "babyfeed-98971.firebaseapp.com",
+      projectId:         "babyfeed-98971",
+      storageBucket:     "babyfeed-98971.firebasestorage.app",
+      messagingSenderId: "461460122252",
+      appId:             "1:461460122252:web:9b2315168c7488b3b4a9a9"
+    };
+    firebase.initializeApp(FIREBASE_CONFIG);
+    window._auth = firebase.auth();
+    window._db   = firebase.firestore();
+    window._db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+  </script>
+
+  <script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef,useCallback}=React;
+    const auth=window._auth, db=window._db;
+
+    const MILK_TYPES=[
+      {label:"🤱 Breast", value:"Breast Milk", color:"#FF6B9D"},
+      {label:"🥛 Formula",value:"Formula Milk",color:"#6B9DFF"},
+      {label:"🔀 Mixed",  value:"Mixed",       color:"#A78BFA"},
+      {label:"🫦 Sucking",value:"Sucking",     color:"#F59E0B"},
+    ];
+    const DIAPER_TYPES=[
+      {label:"💧 Wet",  value:"wet",   color:"#60A5FA"},
+      {label:"💩 Dirty",value:"dirty", color:"#92400E"},
+      {label:"🔀 Mixed",value:"mixed", color:"#A78BFA"},
+    ];
+    const BABY_COLORS=["#FF6B9D","#6B9DFF","#34D399","#FBBF24","#A78BFA","#F87171"];
+
+    // ── THEME ─────────────────────────────────────────────────
+    const ThemeCtx=React.createContext({dark:false,toggle:()=>{}});
+    function useTheme(){return React.useContext(ThemeCtx);}
+    function ThemeProvider({children}){
+      const [dark,setDark]=useState(()=>localStorage.getItem("bf_theme")==="dark");
+      useEffect(()=>{
+        document.body.classList.toggle("dark",dark);
+        localStorage.setItem("bf_theme",dark?"dark":"light");
+      },[dark]);
+      return <ThemeCtx.Provider value={{dark,toggle:()=>setDark(d=>!d)}}>{children}</ThemeCtx.Provider>;
+    }
+
+    // Theme-aware style helpers
+    function useT(){
+      const {dark}=useTheme();
+      return {
+        bg:   dark?"#0F0E17":"#F6F3FF",
+        bg2:  dark?"#1C1B2E":"#fff",
+        bg3:  dark?"#252438":"#F0EBF8",
+        bg4:  dark?"#2E2C45":"#EDE8F8",
+        text: dark?"#F0EEFF":"#1a1a2e",
+        text2:dark?"#AAA":"#888",
+        text3:dark?"#5A5880":"#C5BCD8",
+        bord: dark?"#2E2C45":"#EDE8F8",
+        dark,
+      };
+    }
+
+    // ── ALARM ─────────────────────────────────────────────────
+    function createAlarm(){
+      let ctx=null,running=false,iv=null,ph=0;
+      function cycle(){
+        if(!ctx||!running)return;
+        const now=ctx.currentTime,m=ctx.createGain();
+        m.gain.setValueAtTime(1.5,now);m.connect(ctx.destination);
+        [{t:"sawtooth",a:ph?600:1200,b:ph?1200:600,g:1},{t:"square",a:ph?480:960,b:ph?960:480,g:.5}].forEach(({t,a,b,g})=>{
+          const o=ctx.createOscillator(),gn=ctx.createGain();
+          o.connect(gn);gn.connect(m);o.type=t;
+          o.frequency.setValueAtTime(a,now);o.frequency.linearRampToValueAtTime(b,now+.18);
+          gn.gain.setValueAtTime(g,now);gn.gain.linearRampToValueAtTime(0,now+.2);
+          o.start(now);o.stop(now+.2);
+        });
+        const o3=ctx.createOscillator(),g3=ctx.createGain();
+        o3.connect(g3);g3.connect(m);o3.type="square";o3.frequency.setValueAtTime(2400,now);
+        g3.gain.setValueAtTime(.8,now);g3.gain.exponentialRampToValueAtTime(.001,now+.03);
+        o3.start(now);o3.stop(now+.03);ph=ph?0:1;
+      }
+      return{
+        start(){if(running)return;ctx=new(window.AudioContext||window.webkitAudioContext)();running=true;ph=0;cycle();iv=setInterval(cycle,200);},
+        stop(){running=false;if(iv)clearInterval(iv);if(ctx){ctx.close();ctx=null;}},
+      };
+    }
+    const alarm=createAlarm();
+
+    // ── UTILS ─────────────────────────────────────────────────
+    const fmt=iso=>new Date(iso).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    function timeSince(iso){const m=Math.floor((Date.now()-new Date(iso))/60000);if(m<1)return"just now";if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ${m%60}m ago`;return`${Math.floor(h/24)}d ago`;}
+    function fmtDate(iso){const d=new Date(iso);if(d.toDateString()===new Date().toDateString())return"Today";if(d.toDateString()===new Date(Date.now()-86400000).toDateString())return"Yesterday";return d.toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"});}
+    function mlToOz(ml){return Math.round(ml/29.5*10)/10;}
+    function fmtAmt(ml,unit){return unit==='oz'?`${mlToOz(ml)}oz`:`${ml}ml`;}
+    function countdown(ms){if(ms<=0)return"Feed now!";const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;if(h>0)return`${h}h ${m}m`;if(m>0)return`${m}m ${sec}s`;return`${sec}s`;}
+    function tlabel(t){if(!t)return"";const h=Math.floor(t.totalMins/60),m=t.totalMins%60;if(h>0&&m>0)return`${h}h ${m}m`;if(h>0)return`${h}h`;return`${m}m`;}
+    function genCode(){return Math.random().toString(36).substring(2,8).toUpperCase();}
+
+    // ── PIN PAD ───────────────────────────────────────────────
+    function PinPad({value,onChange,color="#7C5CBF"}){const T=useT();
+      const keys=["1","2","3","4","5","6","7","8","9","","0","⌫"];
+      return(
+        <div>
+          <div style={{display:"flex",justifyContent:"center",gap:16,marginBottom:28}}>
+            {[0,1,2,3].map(i=><div key={i} className={`pin-dot${value.length>i?" filled":""}`} style={value.length>i?{background:color,borderColor:color}:{}}/>)}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,maxWidth:280,margin:"0 auto"}}>
+            {keys.map((k,i)=>(
+              <button key={i} onClick={()=>{if(k==="")return;if(k==="⌫")onChange(value.slice(0,-1));else if(value.length<4)onChange(value+k);}}
+                style={{padding:"18px",background:k===""?"transparent":k==="⌫"?T.bg3:T.bg2,border:"none",borderRadius:18,fontSize:k==="⌫"?20:22,fontWeight:700,color:k==="⌫"?T.text2:T.text,cursor:k===""?"default":"pointer",fontFamily:"inherit",boxShadow:k===""?"none":"0 2px 10px rgba(0,0,0,0.07)"}}>
+                {k}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ── AUTH SCREEN ───────────────────────────────────────────
+    function AuthScreen({onAuth}){
+      const [mode,setMode]=useState("welcome");
+      const [username,setUsername]=useState("");
+      const [pin,setPin]=useState("");
+      const [confirmPin,setConfirmPin]=useState("");
+      const [error,setError]=useState("");
+      const [loading,setLoading]=useState(false);
+      const [emailForPin,setEmailForPin]=useState("");
+      const [inviteCode,setInviteCode]=useState("");
+      const [joinFamilyId,setJoinFamilyId]=useState(null);
+
+      const toEmail=u=>`${u.toLowerCase().replace(/[^a-z0-9]/g,"")}@babyfeed.app`;
+      const toPwd=p=>`bf${p}feed`;
+
+      async function googleSignIn(){
+        setLoading(true);setError("");
+        try{const r=await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());onAuth(r.user);}
+        catch(e){setError(e.message);setLoading(false);}
+      }
+      function goSignUp(){setError("");if(!username.trim()){setError("Enter a username");return;}if(username.length<2){setError("At least 2 characters");return;}setEmailForPin(toEmail(username));setMode("pin-set");setPin("");}
+      function goPinConfirm(){setError("");if(pin.length<4){setError("Enter all 4 digits");return;}setMode("pin-confirm");setConfirmPin("");}
+      async function doSignUp(){
+        if(confirmPin!==pin){setError("PINs don't match");setConfirmPin("");return;}
+        setLoading(true);setError("");
+        try{const r=await auth.createUserWithEmailAndPassword(emailForPin,toPwd(pin));await r.user.updateProfile({displayName:username.trim()});onAuth(r.user);}
+        catch(e){if(e.code==="auth/email-already-in-use")setError("Username taken — try another");else setError(e.message);setMode("welcome");setLoading(false);}
+      }
+      function goSignIn(){setError("");if(!username.trim()){setError("Enter your username");return;}setEmailForPin(toEmail(username));setMode("pin-check");setPin("");}
+      async function doSignIn(){
+        setLoading(true);setError("");
+        try{const r=await auth.signInWithEmailAndPassword(emailForPin,toPwd(pin));onAuth(r.user);}
+        catch(e){setError("Wrong username or PIN");setLoading(false);setPin("");}
+      }
+
+      // Join via invite code — partner creates real account then links to family
+      async function doJoinFamily(){
+        const code=inviteCode.trim().toUpperCase();
+        if(code.length<6){setError("Enter the 6-character invite code");return;}
+        setLoading(true);setError("");
+        try{
+          const snap=await db.collection("families").where("code","==",code).limit(1).get();
+          if(snap.empty){setError("Code not found. Check and try again.");setLoading(false);return;}
+          // Code is valid — store it and move to account creation
+          setJoinFamilyId(snap.docs[0].id);
+          setMode("join-signup");setLoading(false);setError("");
+        }catch(e){setError(e.message);setLoading(false);}
+      }
+
+      // Partner creates account then gets linked to the family
+      async function doJoinSignUp(){
+        if(confirmPin!==pin){setError("PINs don't match");setConfirmPin("");return;}
+        if(!username.trim()){setError("Enter a username");return;}
+        setLoading(true);setError("");
+        try{
+          const email=toEmail(username);
+          const r=await auth.createUserWithEmailAndPassword(email,toPwd(pin));
+          await r.user.updateProfile({displayName:username.trim()});
+          await db.collection("users").doc(r.user.uid).set({familyId:joinFamilyId,role:"partner",joinedAt:new Date().toISOString()});
+          onAuth(r.user);
+        }catch(e){
+          if(e.code==="auth/email-already-in-use")setError("Username taken — try another");
+          else setError(e.message);
+          setLoading(false);
+        }
+      }
+
+      // Partner joins with Google
+      async function doJoinWithGoogle(){
+        setLoading(true);setError("");
+        try{
+          const r=await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+          await db.collection("users").doc(r.user.uid).set({familyId:joinFamilyId,role:"partner",joinedAt:new Date().toISOString()});
+          onAuth(r.user);
+        }catch(e){setError(e.message);setLoading(false);}
+      }
+
+      useEffect(()=>{
+        if(mode==="pin-set"&&pin.length===4)setTimeout(goPinConfirm,150);
+        if(mode==="pin-confirm"&&confirmPin.length===4)setTimeout(doSignUp,150);
+        if(mode==="pin-check"&&pin.length===4)setTimeout(doSignIn,150);
+        if(mode==="join-pin-set"&&pin.length===4)setTimeout(()=>{setError("");if(pin.length<4){setError("Enter all 4 digits");return;}setMode("join-pin-confirm");setConfirmPin("");},150);
+        if(mode==="join-pin-confirm"&&confirmPin.length===4)setTimeout(doJoinSignUp,150);
+      },[pin,confirmPin,mode]);
+
+      const BG="linear-gradient(160deg,#f5f0ff 0%,#fff5f9 100%)";
+      const wrap={minHeight:"100vh",background:BG,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px",position:"relative"};
+      const backBtn=<button onClick={()=>{setMode("welcome");setError("");setPin("");setConfirmPin("");}} style={{position:"absolute",top:28,left:20,background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#C5BCD8",lineHeight:1}}>←</button>;
+
+      if(mode==="welcome")return(
+        <div className="fade-in" style={wrap}>
+          <div style={{fontSize:72,marginBottom:8}}>🍼</div>
+          <div style={{fontSize:28,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>BabyFeed</div>
+          <div style={{fontSize:14,color:"#AAA",marginBottom:48,textAlign:"center"}}>Track feeds · Stay in sync</div>
+          <div style={{width:"100%",maxWidth:340,display:"flex",flexDirection:"column",gap:12}}>
+            <button onClick={googleSignIn} disabled={loading} style={{width:"100%",padding:"16px",background:"#fff",border:"2px solid #EDE8F8",borderRadius:18,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#1a1a2e",display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+              <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.6 0 6.6 5.5 2.6 13.5l7.8 6C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.5 2.8-2.2 5.2-4.7 6.8l7.3 5.7c4.3-4 6.8-9.9 6.8-16.5z"/><path fill="#FBBC05" d="M10.4 28.5A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.9-4.5l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6.2z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.3-5.7c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.7-13.6-9l-7.8 6C6.6 42.5 14.6 48 24 48z"/></svg>
+              Continue with Google
+            </button>
+            <div style={{display:"flex",alignItems:"center",gap:12}}><div style={{flex:1,height:1,background:"#EDE8F8"}}/><span style={{fontSize:12,color:"#C5BCD8",fontWeight:600}}>OR</span><div style={{flex:1,height:1,background:"#EDE8F8"}}/></div>
+            <button onClick={()=>{setMode("signup");setError("");}} style={{width:"100%",padding:"16px",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",borderRadius:18,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#fff",boxShadow:"0 6px 20px rgba(124,92,191,0.35)"}}>Create Account</button>
+            <button onClick={()=>{setMode("signin");setError("");}} style={{width:"100%",padding:"16px",background:"#fff",border:"2px solid #EDE8F8",borderRadius:18,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#7C5CBF"}}>Sign In</button>
+            <button onClick={()=>{setMode("join");setError("");}} style={{width:"100%",padding:"14px",background:"transparent",border:"2px dashed #D5CCF0",borderRadius:18,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#A78BFA"}}>🤝 Join a Family</button>
+          </div>
+          {error&&<div style={{marginTop:20,color:"#FF4D6D",fontSize:13,textAlign:"center"}}>{error}</div>}
+        </div>
+      );
+
+      if(mode==="join")return(
+        <div className="fade-in" style={wrap}>
+          {backBtn}
+          <div style={{fontSize:48,marginBottom:12}}>🤝</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>Join a Family</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:8,textAlign:"center"}}>Step 1 of 3 — Enter invite code</div>
+          <div style={{display:"flex",gap:6,marginBottom:28}}>
+            {[1,2,3].map(s=><div key={s} style={{height:3,width:60,borderRadius:2,background:s===1?"#7C5CBF":"#EDE8F8"}}/>)}
+          </div>
+          <div style={{width:"100%",maxWidth:300}}>
+            <input autoFocus value={inviteCode} onChange={e=>setInviteCode(e.target.value.toUpperCase())} placeholder="e.g. AB12CD" maxLength={6}
+              style={{width:"100%",padding:"18px",border:"2.5px solid #EDE8F8",borderRadius:16,fontSize:24,fontFamily:"monospace",color:"#1a1a2e",background:"#fff",marginBottom:14,textAlign:"center",letterSpacing:6,boxSizing:"border-box"}}/>
+            {error&&<div style={{color:"#FF4D6D",fontSize:13,textAlign:"center",marginBottom:12}}>{error}</div>}
+            <button onClick={doJoinFamily} disabled={loading} style={{width:"100%",padding:"16px",background:"linear-gradient(135deg,#A78BFA,#7C5CBF)",border:"none",borderRadius:16,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>
+              {loading?"Checking code...":"Next →"}
+            </button>
+          </div>
+        </div>
+      );
+
+      if(mode==="join-signup")return(
+        <div className="fade-in" style={wrap}>
+          {backBtn}
+          <div style={{fontSize:40,marginBottom:12}}>👤</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>Create Your Account</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:8,textAlign:"center"}}>Step 2 of 3 — Choose how to sign up</div>
+          <div style={{display:"flex",gap:6,marginBottom:28}}>
+            {[1,2,3].map(s=><div key={s} style={{height:3,width:60,borderRadius:2,background:s<=2?"#7C5CBF":"#EDE8F8"}}/>)}
+          </div>
+          <div style={{width:"100%",maxWidth:300,display:"flex",flexDirection:"column",gap:12}}>
+            <button onClick={doJoinWithGoogle} disabled={loading} style={{width:"100%",padding:"16px",background:"#fff",border:"2px solid #EDE8F8",borderRadius:18,fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#1a1a2e",display:"flex",alignItems:"center",justifyContent:"center",gap:10,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+              <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.5 30.2 0 24 0 14.6 0 6.6 5.5 2.6 13.5l7.8 6C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.5 2.8-2.2 5.2-4.7 6.8l7.3 5.7c4.3-4 6.8-9.9 6.8-16.5z"/><path fill="#FBBC05" d="M10.4 28.5A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.9-4.5l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6.2z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.3-5.7c-2 1.4-4.6 2.2-7.9 2.2-6.3 0-11.7-3.7-13.6-9l-7.8 6C6.6 42.5 14.6 48 24 48z"/></svg>
+              {loading?"Joining...":"Continue with Google"}
+            </button>
+            <div style={{display:"flex",alignItems:"center",gap:12}}><div style={{flex:1,height:1,background:"#EDE8F8"}}/><span style={{fontSize:12,color:"#C5BCD8",fontWeight:600}}>OR</span><div style={{flex:1,height:1,background:"#EDE8F8"}}/></div>
+            <input autoFocus value={username} onChange={e=>setUsername(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"){if(!username.trim()){setError("Enter a username");return;}setMode("join-pin-set");setPin("");}}}
+              placeholder="Choose a username"
+              style={{width:"100%",padding:"16px 18px",border:"2.5px solid #EDE8F8",borderRadius:16,fontSize:16,fontFamily:"inherit",color:"#1a1a2e",background:"#fff",textAlign:"center",letterSpacing:2,boxSizing:"border-box"}}/>
+            {error&&<div style={{color:"#FF4D6D",fontSize:13,textAlign:"center"}}>{error}</div>}
+            <button onClick={()=>{if(!username.trim()){setError("Enter a username");return;}setMode("join-pin-set");setPin("");setError("");}}
+              style={{width:"100%",padding:"16px",background:"linear-gradient(135deg,#7C5CBF,#A78BFA)",border:"none",borderRadius:16,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>
+              Continue with Username →
+            </button>
+          </div>
+        </div>
+      );
+
+      if(mode==="join-pin-set")return(
+        <div className="fade-in" style={wrap}>{backBtn}
+          <div style={{fontSize:40,marginBottom:12}}>🔐</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>Set Your PIN</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:8,textAlign:"center"}}>Step 3 of 3 — Choose a 4-digit PIN</div>
+          <div style={{display:"flex",gap:6,marginBottom:28}}>
+            {[1,2,3].map(s=><div key={s} style={{height:3,width:60,borderRadius:2,background:"#7C5CBF"}}/>)}
+          </div>
+          {error&&<div style={{color:"#FF4D6D",fontSize:13,marginBottom:16,textAlign:"center"}}>{error}</div>}
+          <PinPad value={pin} onChange={v=>{setPin(v);setError("");}}/>
+        </div>
+      );
+
+      if(mode==="join-pin-confirm")return(
+        <div className="fade-in" style={wrap}>{backBtn}
+          <div style={{fontSize:40,marginBottom:12}}>🔐</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>Confirm PIN</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:32}}>Enter PIN again to confirm</div>
+          {error&&<div style={{color:"#FF4D6D",fontSize:13,marginBottom:16,textAlign:"center"}}>{error}</div>}
+          <PinPad value={confirmPin} onChange={v=>{setConfirmPin(v);setError("");}}/>
+          {loading&&<div style={{marginTop:20,color:"#7C5CBF",fontSize:13}}>Creating your account...</div>}
+        </div>
+      );
+
+      if(mode==="signup"||mode==="signin")return(
+        <div className="fade-in" style={wrap}>
+          {backBtn}
+          <div style={{fontSize:40,marginBottom:12}}>👤</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>{mode==="signup"?"Create Account":"Welcome Back"}</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:32}}>Enter your username</div>
+          <div style={{width:"100%",maxWidth:300}}>
+            <input autoFocus value={username} onChange={e=>setUsername(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(mode==="signup"?goSignUp():goSignIn())} placeholder="Username"
+              style={{width:"100%",padding:"16px 18px",border:"2.5px solid #EDE8F8",borderRadius:16,fontSize:18,fontFamily:"inherit",color:"#1a1a2e",background:"#fff",marginBottom:14,textAlign:"center",letterSpacing:2,boxSizing:"border-box"}}/>
+            {error&&<div style={{color:"#FF4D6D",fontSize:13,textAlign:"center",marginBottom:12}}>{error}</div>}
+            <button onClick={mode==="signup"?goSignUp:goSignIn} style={{width:"100%",padding:"16px",background:"linear-gradient(135deg,#7C5CBF,#A78BFA)",border:"none",borderRadius:16,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Continue →</button>
+          </div>
+        </div>
+      );
+
+      if(mode==="pin-set")return(
+        <div className="fade-in" style={wrap}>{backBtn}
+          <div style={{fontSize:40,marginBottom:12}}>🔐</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>Set Your PIN</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:32}}>Choose a 4-digit PIN</div>
+          {error&&<div style={{color:"#FF4D6D",fontSize:13,marginBottom:16}}>{error}</div>}
+          <PinPad value={pin} onChange={v=>{setPin(v);setError("");}}/>
+        </div>
+      );
+      if(mode==="pin-confirm")return(
+        <div className="fade-in" style={wrap}>{backBtn}
+          <div style={{fontSize:40,marginBottom:12}}>🔐</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>Confirm PIN</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:32}}>Enter PIN again</div>
+          {error&&<div style={{color:"#FF4D6D",fontSize:13,marginBottom:16,textAlign:"center"}}>{error}</div>}
+          <PinPad value={confirmPin} onChange={v=>{setConfirmPin(v);setError("");}}/>
+          {loading&&<div style={{marginTop:20,color:"#7C5CBF",fontSize:13}}>Creating account...</div>}
+        </div>
+      );
+      if(mode==="pin-check")return(
+        <div className="fade-in" style={wrap}>{backBtn}
+          <div style={{fontSize:40,marginBottom:12}}>🔐</div>
+          <div style={{fontSize:22,fontWeight:900,color:"#1a1a2e",marginBottom:6}}>Enter PIN</div>
+          <div style={{fontSize:13,color:"#AAA",marginBottom:32}}>Welcome back, <strong style={{color:"#7C5CBF"}}>{username}</strong>!</div>
+          {error&&<div style={{color:"#FF4D6D",fontSize:13,marginBottom:16,textAlign:"center"}}>{error}</div>}
+          <PinPad value={pin} onChange={v=>{setPin(v);setError("");}}/>
+          {loading&&<div style={{marginTop:20,color:"#7C5CBF",fontSize:13}}>Signing in...</div>}
+        </div>
+      );
+      return null;
+    }
+
+    // ── FIRESTORE HOOK ────────────────────────────────────────
+    function useFirestore(uid){
+      const [babies,setBabies]=useState([]);
+      const [logs,setLogs]=useState([]);
+      const [timers,setTimers]=useState({});
+      const [ready,setReady]=useState(false);
+      const [familyId,setFamilyId]=useState(null);
+      const [activities,setActivities]=useState([]);
+
+      useEffect(()=>{
+        if(!uid)return;
+        // Migrate old data from users/{uid}/... → families/{uid}/...
+        async function migrateIfNeeded(){
+          const famBabies=await db.collection(`families/${uid}/babies`).limit(1).get();
+          if(!famBabies.empty)return; // already migrated or has new data
+          const oldBabies=await db.collection(`users/${uid}/babies`).get();
+          if(oldBabies.empty)return; // no old data to migrate
+          console.log("Migrating old data...");
+          const batch=db.batch();
+          oldBabies.docs.forEach(d=>batch.set(db.collection(`families/${uid}/babies`).doc(d.id),d.data()));
+          const oldLogs=await db.collection(`users/${uid}/logs`).get();
+          oldLogs.docs.forEach(d=>batch.set(db.collection(`families/${uid}/logs`).doc(d.id),d.data()));
+          const oldTimers=await db.collection(`users/${uid}/timers`).get();
+          oldTimers.docs.forEach(d=>batch.set(db.collection(`families/${uid}/timers`).doc(d.id),d.data()));
+          batch.set(db.collection("families").doc(uid),{ownerId:uid,createdAt:new Date().toISOString()},{merge:true});
+          batch.set(db.collection("users").doc(uid),{familyId:uid,role:"owner"},{merge:true});
+          await batch.commit();
+          console.log("Migration complete!");
+        }
+        migrateIfNeeded().catch(console.error);
+
+        // Check if this user belongs to a family (partner join)
+        const uns=[];
+        uns.push(db.collection("users").doc(uid).onSnapshot(snap=>{
+          const data=snap.data();
+          const fid=data?.familyId||uid; // owner uses own uid as familyId
+          setFamilyId(fid);
+        }));
+        return()=>uns.forEach(u=>u());
+      },[uid]);
+
+      useEffect(()=>{
+        if(!familyId)return;
+        const uns=[];
+        uns.push(db.collection(`families/${familyId}/babies`).onSnapshot(snap=>{
+          setBabies(snap.docs.map(d=>({...d.data(),id:d.id})));
+          setReady(true);
+        }));
+        uns.push(db.collection(`families/${familyId}/logs`).orderBy("timestamp","desc").limit(500).onSnapshot(snap=>{
+          setLogs(snap.docs.map(d=>({...d.data(),id:d.id})));
+        }));
+        uns.push(db.collection(`families/${familyId}/timers`).onSnapshot(snap=>{
+          const t={};snap.docs.forEach(d=>{t[d.id]=d.data();});setTimers(t);
+        }));
+        uns.push(db.collection(`families/${familyId}/activities`).orderBy("startTime","desc").limit(200).onSnapshot(snap=>{
+          setActivities(snap.docs.map(d=>({...d.data(),id:d.id})));
+        },()=>{}));
+        return()=>uns.forEach(u=>u());
+      },[familyId]);
+
+      const fref=()=>familyId;
+      const saveBaby=async b=>db.collection(`families/${fref()}/babies`).doc(String(b.id)).set(b);
+      const deleteBaby=async id=>{
+        await db.collection(`families/${fref()}/babies`).doc(String(id)).delete();
+        const snap=await db.collection(`families/${fref()}/logs`).where("babyId","==",id).get();
+        const batch=db.batch();snap.docs.forEach(d=>batch.delete(d.ref));await batch.commit();
+      };
+      const addLog=async l=>db.collection(`families/${fref()}/logs`).add(l);
+      const deleteLog=async id=>db.collection(`families/${fref()}/logs`).doc(id).delete();
+      const restoreLog=async l=>{const{id,...data}=l;await db.collection(`families/${fref()}/logs`).doc(id).set(data);};
+      const saveTimer=async(bid,data)=>db.collection(`families/${fref()}/timers`).doc(String(bid)).set(data);
+
+      // Generate invite code stored in family doc
+      const getOrCreateInviteCode=async()=>{
+        const fid=fref();
+        const docRef=db.collection("families").doc(fid);
+        const snap=await docRef.get();
+        if(snap.exists&&snap.data()?.code)return snap.data().code;
+        const code=genCode();
+        await docRef.set({code,createdAt:new Date().toISOString(),ownerId:uid},{merge:true});
+        return code;
+      };
+
+      const addActivity=async a=>db.collection(`families/${fref()}/activities`).add(a);
+      const deleteActivity=async id=>db.collection(`families/${fref()}/activities`).doc(id).delete();
+      const updateActivity=async(id,data)=>db.collection(`families/${fref()}/activities`).doc(id).set(data);
+
+      return{babies,logs,activities,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity};
+    }
+
+    // ── INSIGHTS ENGINE ───────────────────────────────────────
+    function computeInsights(babies,logs,dismissedHungry={},dismissedIntake={}){
+      const now=Date.now();
+      const insights=[];
+      const today=new Date().toDateString();
+      const yesterday=new Date(now-86400000).toDateString();
+
+      babies.forEach(b=>{
+        const bl=logs.filter(l=>l.babyId===b.id);
+        const todayLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===today);
+        const yestLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===yesterday);
+        const week7=bl.filter(l=>new Date(l.timestamp).getTime()>=now-7*86400000);
+        const week14=bl.filter(l=>new Date(l.timestamp).getTime()>=now-14*86400000&&new Date(l.timestamp).getTime()<now-7*86400000);
+
+        const todayTotal=todayLogs.reduce((s,l)=>s+l.amount,0);
+        const yestTotal=yestLogs.reduce((s,l)=>s+l.amount,0);
+        const avg7=week7.length>0?Math.round(week7.reduce((s,l)=>s+l.amount,0)/7):0;
+        const avg14prev=week14.length>0?Math.round(week14.reduce((s,l)=>s+l.amount,0)/7):0;
+
+        // Daily summary
+        insights.push({
+          babyId:b.id,type:"daily",
+          title:`${b.name}'s Day`,
+          value:`${todayTotal}ml`,
+          sub:`${todayLogs.length} feeds today`,
+          icon:"📊",color:b.color,
+          detail:yestTotal>0?`${todayTotal>yestTotal?"↑":"↓"} vs ${yestTotal}ml yesterday`:null
+        });
+
+        // Low intake alert — time-aware (no early AM false alarms)
+        if(avg7>0&&todayLogs.length>0){
+          const nowHour=new Date(now).getHours();
+          const pct=Math.round((todayTotal/avg7)*100);
+          const isWatch=nowHour>=8&&nowHour<12&&pct<50;
+          const isAlert=nowHour>=12&&nowHour<20&&pct<40;
+          const isEveAlert=nowHour>=20&&pct<70;
+          if((isAlert||isEveAlert)&&!(dismissedIntake&&dismissedIntake[b.id])){
+            insights.push({babyId:b.id,type:"alert",title:"Low Intake Alert",
+              value:`${todayTotal}ml`,sub:`${pct}% of usual ${avg7}ml/day`,
+              icon:"⚠️",color:"#FF4D6D",detail:`${b.name} is drinking less than usual today`,
+              urgent:true,dismissable:true});
+          } else if(isWatch&&!(dismissedIntake&&dismissedIntake[b.id])){
+            insights.push({babyId:b.id,type:"watch",title:"Worth Monitoring",
+              value:`${todayTotal}ml so far`,sub:`${pct}% of usual — still early`,
+              icon:"👀",color:"#FBBF24",detail:`${b.name}'s intake is a bit low but it's still early`,
+              urgent:false,dismissable:true});
+          }
+        }
+
+        // Next hunger prediction — based on avg interval
+        const sorted=[...bl].sort((a,c)=>new Date(a.timestamp)-new Date(c.timestamp));
+        const intervals=[];
+        for(let i=1;i<sorted.length;i++)intervals.push((new Date(sorted[i].timestamp)-new Date(sorted[i-1].timestamp))/60000);
+        const avgInterval=intervals.length>2?Math.round(intervals.slice(-5).reduce((s,x)=>s+x,0)/Math.min(intervals.length,5)):null;
+        const lastFeed=bl.sort((a,c)=>new Date(c.timestamp)-new Date(a.timestamp))[0];
+        if(avgInterval&&lastFeed){
+          // If dismissed, restart countdown from dismiss time
+          const dismissedAt=dismissedHungry&&dismissedHungry[b.id];
+          const startMs=dismissedAt&&dismissedAt>new Date(lastFeed.timestamp).getTime()
+            ? dismissedAt
+            : new Date(lastFeed.timestamp).getTime();
+          const nextMs=startMs+avgInterval*60000;
+          const diffMs=nextMs-now;
+          const label=diffMs<0?"Hungry now!":countdown(diffMs);
+          insights.push({
+            babyId:b.id,type:"prediction",
+            title:"Next Hunger",
+            value:label,
+            sub:`Based on ${Math.round(avgInterval/60*10)/10}h avg interval`,
+            icon:"🔮",color:"#A78BFA",
+            detail:diffMs<0?`${b.name} is likely hungry!`:`Predicted at ${fmt(new Date(nextMs).toISOString())}`,
+            urgent:diffMs<0
+          });
+        }
+
+        // Weekly trend
+        if(avg7>0&&avg14prev>0){
+          const diff=Math.round(((avg7-avg14prev)/avg14prev)*100);
+          insights.push({
+            babyId:b.id,type:"trend",
+            title:"Weekly Trend",
+            value:`${diff>0?"+":""}${diff}%`,
+            sub:`${avg7}ml/day this week`,
+            icon:diff>=0?"📈":"📉",color:diff>=0?"#34D399":"#FBBF24",
+            detail:`vs ${avg14prev}ml/day last week`
+          });
+        }
+
+        // Doctor summary
+        const allTime=bl;
+        if(allTime.length>0){
+          const totalDays=Math.max(1,Math.round((now-new Date(allTime[allTime.length-1]?.timestamp).getTime())/86400000));
+          const dailyAvg=Math.round(allTime.reduce((s,l)=>s+l.amount,0)/totalDays);
+          const topMilk=MILK_TYPES.map(m=>({...m,count:allTime.filter(l=>l.milkType===m.value).length})).sort((a,b)=>b.count-a.count)[0];
+          insights.push({
+            babyId:b.id,type:"doctor",
+            title:"Doctor Summary",
+            value:`${dailyAvg}ml/day`,
+            sub:`Over ${totalDays} day${totalDays!==1?"s":""} · ${allTime.length} feeds`,
+            icon:"👨‍⚕️",color:"#6B9DFF",
+            detail:`Primary: ${topMilk?.label||"N/A"}`
+          });
+        }
+      });
+
+      return insights;
+    }
+
+    // ── INSIGHTS VIEW ─────────────────────────────────────────
+    function InsightsView({babies,logs,onLogFeed,onDismissHungry,dismissedHungry={},dismissedIntake={}}){
+      const T=useT();
+      const [expanded,setExpanded]=useState(null);
+      const [hungryAction,setHungryAction]=useState(null);
+      const insights=computeInsights(babies,logs,dismissedHungry,dismissedIntake);
+      // For each baby, compute avg interval (ms) so dismiss expires exactly when next feed is due
+      function avgIntervalMs(babyId){
+        const bl=[...logs].filter(l=>l.babyId===babyId).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+        const ivs=[];for(let i=1;i<bl.length;i++)ivs.push(new Date(bl[i].timestamp)-new Date(bl[i-1].timestamp));
+        if(ivs.length===0)return 2*60*60*1000; // default 2h
+        return ivs.slice(-5).reduce((s,x)=>s+x,0)/Math.min(ivs.length,5);
+      }
+      const urgent=insights.filter(i=>i.urgent && !(
+        i.value==="Hungry now!" &&
+        dismissedHungry[i.babyId] &&
+        (Date.now()-dismissedHungry[i.babyId]) < avgIntervalMs(i.babyId)
+      ));
+      const byBaby={};babies.forEach(b=>{byBaby[b.id]=insights.filter(i=>i.babyId===b.id);});
+
+      return(
+        <div>
+          {urgent.length>0&&(
+            <div style={{marginBottom:18}}>
+              <div style={{fontSize:10,color:"#FF4D6D",fontWeight:700,textTransform:"uppercase",letterSpacing:1.2,marginBottom:10}}>⚠️ Alerts</div>
+              {urgent.map((ins,i)=>{
+                const isHungry=ins.value==="Hungry now!";
+                return(
+                  <div key={i} style={{background:T.dark?"#2D1520":"#FFF0F3",border:"2px solid #FF4D6D33",borderRadius:18,padding:"16px",marginBottom:10,cursor:"pointer"}}
+                    onClick={()=>setExpanded(expanded===`urgent-${i}`?null:`urgent-${i}`)}>
+                    <div style={{display:"flex",alignItems:"center",gap:14}}>
+                      <div style={{fontSize:32,flexShrink:0}}>{ins.icon}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:900,color:"#FF4D6D",marginBottom:2}}>{ins.title}</div>
+                        <div style={{fontSize:20,fontWeight:900,color:T.text}}>{ins.value}</div>
+                        <div style={{fontSize:12,color:T.text2,marginTop:2}}>{ins.detail}</div>
+                      </div>
+                      <span style={{fontSize:12,color:T.text3}}>{expanded===`urgent-${i}`?"▲":"▼"}</span>
+                    </div>
+                    {expanded===`urgent-${i}`&&(
+                      <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${T.bord}`}}>
+                        <div style={{fontSize:12,color:T.text2,marginBottom:12,lineHeight:1.6}}>{ins.sub}</div>
+                        {isHungry?(
+                          <div style={{display:"flex",gap:8}}>
+                            <button onClick={e=>{e.stopPropagation();onLogFeed(ins.babyId);}} style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#FF6B9D,#A78BFA)",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>🍼 Record Feed</button>
+                            <button onClick={e=>{e.stopPropagation();onDismissHungry(ins.babyId);}} style={{flex:1,padding:"10px",background:T.bg3,border:"none",borderRadius:12,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Dismiss</button>
+                          </div>
+                        ):(
+                          <div style={{fontSize:12,color:T.text3,fontStyle:"italic"}}>{ins.type==="alert"||ins.type==="watch"?ins.sub:"Tap a baby tab to log a feed"}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {babies.map(b=>(
+            <div key={b.id} style={{marginBottom:24}}>
+              <div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:10,height:10,borderRadius:"50%",background:b.color}}/>
+                {b.name}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {(byBaby[b.id]||[]).filter(i=>!i.urgent).map((ins,i)=>{
+                  const key=`${b.id}-${i}`;
+                  return(
+                    <div key={i} onClick={()=>setExpanded(expanded===key?null:key)}
+                      style={{background:T.bg2,borderRadius:18,padding:"16px",borderLeft:`4px solid ${ins.color}`,cursor:"pointer",transition:"transform 0.15s",transform:expanded===key?"scale(0.97)":"scale(1)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                        <span style={{fontSize:20}}>{ins.icon}</span>
+                        <span style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{ins.title}</span>
+                      </div>
+                      <div style={{fontSize:22,fontWeight:900,color:ins.color,lineHeight:1,marginBottom:4}}>{ins.value}</div>
+                      <div style={{fontSize:11,color:T.text2,fontWeight:600}}>{ins.sub}</div>
+                      {expanded===key&&ins.detail&&(
+                        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${T.bord}`,fontSize:12,color:T.text3,lineHeight:1.5}}>{ins.detail}</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {insights.length===0&&(
+            <div style={{textAlign:"center",padding:"60px 20px",color:T.text3}}>
+              <div style={{fontSize:48,marginBottom:12}}>🔮</div>
+              <div style={{fontSize:15,fontWeight:700}}>Log a few feeds first</div>
+              <div style={{fontSize:13,marginTop:6}}>Insights will appear after you have some data</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── DASHBOARD ─────────────────────────────────────────────
+    function DashboardView({babies,logs}){
+      const T=useT();
+      const [range,setRange]=useState(7);
+      const now=Date.now(),recent=logs.filter(l=>new Date(l.timestamp).getTime()>=now-range*86400000);
+      const gm=range<=14?"day":range<=90?"week":"month";
+      function gk(ts){const d=new Date(ts);if(gm==="day")return d.toDateString();if(gm==="week"){const w=new Date(d);w.setDate(d.getDate()-d.getDay());return w.toDateString();}return`${d.getFullYear()}-${d.getMonth()}`;}
+      function gl(k){if(gm==="day")return new Date(k).toLocaleDateString([],{weekday:"short"});if(gm==="week")return new Date(k).toLocaleDateString([],{month:"short",day:"numeric"});const[y,m]=k.split("-");return new Date(+y,+m).toLocaleDateString([],{month:"short",year:"2-digit"});}
+      const gmap={};
+      recent.forEach(l=>{const k=gk(l.timestamp);if(!gmap[k]){gmap[k]={k,label:gl(k),ts:new Date(l.timestamp).getTime()};babies.forEach(b=>gmap[k][b.id]=0);}gmap[k][l.babyId]=(gmap[k][l.babyId]||0)+l.amount;});
+      if(gm==="day"){for(let i=0;i<range;i++){const d=new Date(now-(range-1-i)*86400000),k=d.toDateString();if(!gmap[k]){gmap[k]={k,label:d.toLocaleDateString([],{weekday:"short"}),ts:d.getTime()};babies.forEach(b=>gmap[k][b.id]=0);}}}
+      const cd=Object.values(gmap).sort((a,b)=>a.ts-b.ts);cd.forEach(d=>{d.total=babies.reduce((s,b)=>s+(d[b.id]||0),0);});
+      const mb=Math.max(...cd.map(d=>d.total),1);
+      function stats(bid){const bl=recent.filter(l=>l.babyId===bid),t=bl.reduce((s,l)=>s+l.amount,0),avg=bl.length>0?Math.round(t/range):0,apf=bl.length>0?Math.round(t/bl.length):0,s=[...bl].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)),iv=[];for(let i=1;i<s.length;i++)iv.push((new Date(s[i].timestamp)-new Date(s[i-1].timestamp))/60000);const ai=iv.length>0?Math.round(iv.reduce((x,y)=>x+y,0)/iv.length):0;return{total:t,avg,apf,feeds:bl.length,ai};}
+      function mkbd(bid){const bl=recent.filter(l=>l.babyId===bid),t=bl.reduce((s,l)=>s+l.amount,0);return MILK_TYPES.map(m=>{const a=bl.filter(l=>l.milkType===m.value).reduce((s,l)=>s+l.amount,0);return{...m,a,p:t>0?Math.round(a/t*100):0};}).filter(m=>m.a>0);}
+      const hm=Array(24).fill(0);recent.forEach(l=>{hm[new Date(l.timestamp).getHours()]++;});const mh=Math.max(...hm,1);
+      const rl=range>=365?"1 year":range>=90?`${range/30|0} months`:range>=30?"1 month":`${range} days`;
+      const C=({ch,s={}})=><div style={{background:T.bg2,borderRadius:20,padding:"18px",marginBottom:14,...s}}>{ch}</div>;
+      const SectionTitle=({t})=><div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1.2,marginBottom:14}}>{t}</div>;
+      return(
+        <div>
+          <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+            {[{l:"3d",v:3},{l:"7d",v:7},{l:"14d",v:14},{l:"1M",v:30},{l:"3M",v:90},{l:"1Y",v:365}].map(o=><button key={o.l} onClick={()=>setRange(o.v)} style={{flex:1,minWidth:"calc(33% - 6px)",padding:"9px 4px",background:range===o.v?"#7C5CBF":T.bg2,border:"none",borderRadius:12,color:range===o.v?"#fff":T.text2,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>{o.l}</button>)}
+          </div>
+          <div style={{display:"flex",gap:10,marginBottom:14}}>
+            {babies.map(b=>{const s=stats(b.id);return(<div key={b.id} style={{flex:1,background:T.bg2,borderRadius:18,padding:"14px",borderTop:`4px solid ${b.color}`}}><div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:8}}>{b.name}</div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{s.avg}<span style={{fontSize:11,color:T.text3,fontWeight:500}}>ml/day</span></div><div style={{fontSize:11,color:T.text3,marginTop:4}}>{s.feeds} feeds · ~{s.apf}ml each</div>{s.ai>0&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>avg every {s.ai>=60?`${Math.floor(s.ai/60)}h ${s.ai%60}m`:`${s.ai}m`}</div>}</div>);})}
+          </div>
+          <C ch={<><SectionTitle t={`${gm==="day"?"Daily":gm==="week"?"Weekly":"Monthly"} Intake — ${rl}`}/><div style={{display:"flex",alignItems:"flex-end",gap:gm==="month"?6:3,height:120,overflowX:"auto",paddingBottom:2}}>{cd.map((d,i)=><div key={i} style={{flexShrink:0,minWidth:gm==="day"?0:36,flex:gm==="day"?1:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><div style={{fontSize:8,color:T.text3,fontWeight:600,marginBottom:2}}>{d.total>0?d.total:""}</div><div style={{width:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",height:90,gap:1}}>{babies.map(b=>{const h=d[b.id]>0?Math.max(4,Math.round(d[b.id]/mb*90)):0;return h>0?<div key={b.id} style={{width:"100%",height:h,background:b.color,borderRadius:4,opacity:.85}}/>:null;})}</div><div style={{fontSize:8,color:T.text3,fontWeight:700,marginTop:4,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div></div>)}</div><div style={{display:"flex",gap:12,marginTop:12,justifyContent:"center"}}>{babies.map(b=><div key={b.id} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:3,background:b.color}}/><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{b.name}</span></div>)}</div></>}/>
+          <C ch={<><SectionTitle t="Milk Type Breakdown"/>{babies.map(b=>{const bd=mkbd(b.id);return bd.length===0?<div key={b.id} style={{fontSize:12,color:T.text3,marginBottom:12}}>{b.name}: no data</div>:(<div key={b.id} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:b.color,marginBottom:8}}>{b.name}</div>{bd.map(m=><div key={m.value} style={{marginBottom:6}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{m.label}</span><span style={{fontSize:11,color:m.color,fontWeight:800}}>{m.p}% · {m.a}ml</span></div><div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}><div style={{height:"100%",width:`${m.p}%`,background:m.color,borderRadius:6,transition:"width 0.4s"}}/></div></div>)}</div>);})}</>}/>
+          {babies.length>1&&<C ch={<><SectionTitle t="Baby Comparison"/>{(()=>{const st=babies.map(b=>({...b,...stats(b.id)}));return(<div style={{display:"flex",flexDirection:"column",gap:12}}>{[{k:"total",l:"Total intake",s:"ml",mx:Math.max(...st.map(x=>x.total),1)},{k:"feeds",l:"Total feeds",s:"",mx:Math.max(...st.map(x=>x.feeds),1)},{k:"apf",l:"Avg per feed",s:"ml",mx:Math.max(...st.map(x=>x.apf),1)}].map(m=><div key={m.k}><div style={{fontSize:11,color:T.text2,fontWeight:700,marginBottom:6}}>{m.l}</div>{st.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}><div style={{width:36,fontSize:11,fontWeight:800,color:s.color,flexShrink:0}}>{s.name.split(" ")[0]}</div><div style={{flex:1,background:T.bg3,borderRadius:6,height:10,overflow:"hidden"}}><div style={{height:"100%",width:`${s[m.k]/m.mx*100}%`,background:s.color,borderRadius:6}}/></div><div style={{fontSize:11,fontWeight:800,color:T.text2,width:50,textAlign:"right"}}>{s[m.k]}{m.s}</div></div>)}</div>)}</div>);})()}</>}/>}
+          <C ch={<><SectionTitle t={`Feeding Heatmap — ${rl}`}/><div style={{display:"flex",flexWrap:"wrap",gap:4}}>{hm.map((c,h)=>{const iv=c/mh,bg=iv===0?T.bg3:`rgba(124,92,191,${0.15+iv*0.85})`;const label=h===0?"12AM":h<12?`${h}AM`:h===12?"12PM":`${h-12}PM`;return<div key={h} title={label} style={{width:"calc(12.5% - 4px)",aspectRatio:"1",borderRadius:8,background:bg,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:7,color:iv>.5?"#fff":T.text3,fontWeight:700,textAlign:"center",lineHeight:1.1}}>{label}</span></div>;})}</div><div style={{display:"flex",gap:4,marginTop:10,alignItems:"center",justifyContent:"center"}}><span style={{fontSize:10,color:T.text3}}>Less</span>{[.1,.3,.55,.75,1].map(v=><div key={v} style={{width:14,height:14,borderRadius:4,background:`rgba(124,92,191,${0.15+v*0.85})`}}/>)}<span style={{fontSize:10,color:T.text3}}>More</span></div></>}/>
+        </div>
+      );
+    }
+
+    // ── PARTNER MODAL ─────────────────────────────────────────
+    function PartnerModal({onClose,getOrCreateInviteCode,user,onLinkPartner}){
+      const T=useT();
+      const [code,setCode]=useState(null);
+      const [copied,setCopied]=useState(false);
+      useEffect(()=>{getOrCreateInviteCode().then(setCode);},[]);
+      function copy(){navigator.clipboard.writeText(code).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});}
+      return(
+        <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.6)",display:"flex",alignItems:"flex-end",zIndex:200}} onClick={onClose}>
+          <div style={{background:T.bg2,borderRadius:"26px 26px 0 0",padding:"32px 24px 48px",width:"100%",maxWidth:430,margin:"0 auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:36,marginBottom:12,textAlign:"center"}}>🤝</div>
+            <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:6,textAlign:"center"}}>Invite Your Care Team</div>
+            <div style={{fontSize:13,color:T.text2,marginBottom:28,textAlign:"center",lineHeight:1.6}}>Share this code with your partner, grandparent, or nanny.<br/>They tap "Join a Family" on the welcome screen.</div>
+            {code?(
+              <>
+                <div style={{background:T.bg3,borderRadius:20,padding:"24px",marginBottom:16,textAlign:"center"}}>
+                  <div style={{fontSize:40,fontWeight:900,color:"#7C5CBF",letterSpacing:8,fontFamily:"monospace"}}>{code}</div>
+                  <div style={{fontSize:11,color:T.text3,marginTop:8}}>6-character invite code</div>
+                </div>
+                <button onClick={copy} style={{width:"100%",padding:"16px",background:copied?"#34D399":"linear-gradient(135deg,#7C5CBF,#A78BFA)",border:"none",borderRadius:16,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"inherit",marginBottom:10,transition:"background 0.3s"}}>
+                  {copied?"✓ Copied!":"📋 Copy Code"}
+                </button>
+                <div style={{fontSize:12,color:T.text3,textAlign:"center",marginBottom:16}}>Both of you will share the same babies and feed logs in real time</div>
+                <div style={{height:1,background:T.bord,marginBottom:16}}/>
+                <div style={{textAlign:"center",fontSize:13,color:T.text2,marginBottom:10}}>Already have a partner's invite code?</div>
+                <button onClick={onLinkPartner} style={{width:"100%",padding:"14px",background:"transparent",border:"2px dashed #D5CCF0",borderRadius:16,color:"#A78BFA",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 Join a Family Instead</button>
+              </>
+            ):(
+              <div style={{textAlign:"center",padding:"20px"}}><div className="spin" style={{margin:"0 auto"}}/></div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+
+    // ── ACTIVITY VIEW ─────────────────────────────────────────
+    function ActivityView({babies,activities,activeBabyId,suckingActive,sleepActive,onStartSucking,onFinishSucking,onStartSleep,onFinishSleep,onLogSleep,onLogDiaper,onDeleteActivity,onUpdateActivity,fmtDur,nowMs,activityFilter,setActivityFilter}){
+      const T=useT();
+      const [editAct,setEditAct]=useState(null);
+      const [editStart,setEditStart]=useState("");
+      const [editEnd,setEditEnd]=useState("");
+      const [editDiaper,setEditDiaper]=useState("");
+      const [confirmDelAct,setConfirmDelAct]=useState(null);
+      const [diaperFlash,setDiaperFlash]=useState({});
+      const [manualSleep,setManualSleep]=useState({}); // {babyId: {startVal, endVal}}
+
+      const filtered=activityFilter==="all"?activities:activities.filter(a=>a.babyId===activityFilter);
+
+      function fmtDurSecs(secs){
+        if(!secs)return"—";
+        const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60;
+        if(h>0)return`${h}h ${m}m`;if(m>0)return`${m}m ${s}s`;return`${s}s`;
+      }
+
+      function actIcon(a){return a.type==="sleep"?"😴":a.type==="sucking"?"🫦":a.diaperType==="wet"?"💧":a.diaperType==="dirty"?"💩":"🔀";}
+      function actLabel(a){
+        if(a.type==="sleep")return`Sleep · ${fmtDurSecs(a.durationSecs)}`;
+        if(a.type==="sucking")return`Sucking · ${fmtDurSecs(a.durationSecs)}`;
+        const dt=DIAPER_TYPES.find(d=>d.value===a.diaperType);
+        return`Diaper · ${dt?.label.split(" ")[1]||a.diaperType}`;
+      }
+      function actColor(a){
+        if(a.type==="sleep")return"#60A5FA";
+        if(a.type==="sucking")return"#F59E0B";
+        return DIAPER_TYPES.find(d=>d.value===a.diaperType)?.color||"#A78BFA";
+      }
+
+      async function saveEditAct(){
+        if(!editAct)return;
+        const start=new Date(editStart).toISOString();
+        const end=editEnd?new Date(editEnd).toISOString():editAct.endTime;
+        const durationSecs=editEnd&&editStart?Math.round((new Date(editEnd)-new Date(editStart))/1000):editAct.durationSecs;
+        const updated={...editAct};
+        if(editStart)updated.startTime=start;
+        if(editEnd)updated.endTime=end;
+        if(durationSecs)updated.durationSecs=durationSecs;
+        if(editAct.type==="diaper"&&editDiaper)updated.diaperType=editDiaper;
+        const{id,...data}=updated;
+        await onUpdateActivity(id,data);
+        setEditAct(null);
+      }
+
+      // Separate active sessions per baby
+      const ab=babies.find(b=>b.id===activeBabyId)||babies[0];
+
+      return(
+        <div>
+          {/* Active sessions banner */}
+          {Object.keys(suckingActive).map(bid=>{
+            const b=babies.find(x=>x.id===bid);
+            return(
+              <div key={bid} style={{background:T.dark?"#2D2010":"#FFF8E7",border:"2px solid #F59E0B44",borderRadius:18,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:28}}>🫦</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:"#92660A",fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{b?.name} · Sucking</div>
+                  <div style={{fontSize:22,fontWeight:900,color:"#F59E0B"}}>{fmtDur(Math.round((nowMs-suckingActive[bid].startMs)/1000))}</div>
+                </div>
+                <button onClick={()=>onFinishSucking(bid)} style={{padding:"10px 18px",background:"#F59E0B",border:"none",borderRadius:14,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Finish</button>
+              </div>
+            );
+          })}
+          {Object.keys(sleepActive).map(bid=>{
+            const b=babies.find(x=>x.id===bid);
+            return(
+              <div key={bid} style={{background:T.dark?"#101A2D":"#EFF6FF",border:"2px solid #60A5FA44",borderRadius:18,padding:"14px 18px",marginBottom:12,display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:28}}>😴</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:"#1D4ED8",fontWeight:700,textTransform:"uppercase",letterSpacing:.8}}>{b?.name} · Sleeping</div>
+                  <div style={{fontSize:22,fontWeight:900,color:"#60A5FA"}}>{fmtDur(Math.round((nowMs-sleepActive[bid].startMs)/1000))}</div>
+                </div>
+                <button onClick={()=>onFinishSleep(bid)} style={{padding:"10px 18px",background:"#60A5FA",border:"none",borderRadius:14,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Finish</button>
+              </div>
+            );
+          })}
+
+          {/* Quick log buttons per baby */}
+          {babies.map(b=>(
+            <div key={b.id} style={{background:T.bg2,borderRadius:20,padding:"16px",marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:b.color}}/>{b.name}
+              </div>
+              {/* Sleep */}
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>😴 Sleep</div>
+                {sleepActive[b.id]?(
+                  <button onClick={()=>onFinishSleep(b.id)} style={{width:"100%",padding:"13px",background:"linear-gradient(135deg,#60A5FA,#3B82F6)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>
+                    ✓ Finish Sleep · {fmtDur(Math.round((nowMs-sleepActive[b.id].startMs)/1000))}
+                  </button>
+                ):(
+                  <div>
+                    {!manualSleep[b.id]?(
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>onStartSleep(b.id)} style={{flex:1,padding:"13px",background:T.bg3,border:`2px dashed ${T.bord}`,borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          ▶ Start Sleep
+                        </button>
+                        <button onClick={()=>setManualSleep(s=>({...s,[b.id]:{startVal:new Date(Date.now()-30*60000).toISOString().slice(0,16),endVal:new Date().toISOString().slice(0,16)}}))}
+                          style={{padding:"13px 14px",background:T.bg3,border:`2px dashed ${T.bord}`,borderRadius:14,color:T.text3,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                          ✏️ Log past
+                        </button>
+                      </div>
+                    ):(
+                      <div style={{background:T.bg3,borderRadius:14,padding:"14px"}}>
+                        <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.8}}>Log Past Sleep</div>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>Fell asleep</div>
+                        <input type="datetime-local" value={manualSleep[b.id]?.startVal||""} onChange={e=>setManualSleep(s=>({...s,[b.id]:{...s[b.id],startVal:e.target.value}}))}
+                          style={{width:"100%",padding:"9px 12px",border:`2px solid ${T.bord}`,borderRadius:10,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box",marginBottom:8}}/>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>Woke up</div>
+                        <input type="datetime-local" value={manualSleep[b.id]?.endVal||""} onChange={e=>setManualSleep(s=>({...s,[b.id]:{...s[b.id],endVal:e.target.value}}))}
+                          style={{width:"100%",padding:"9px 12px",border:`2px solid ${T.bord}`,borderRadius:10,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box",marginBottom:10}}/>
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={()=>setManualSleep(s=>{const n={...s};delete n[b.id];return n;})}
+                            style={{flex:1,padding:"10px",background:T.bg2,border:"none",borderRadius:10,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                          <button onClick={async()=>{
+                            const ms=manualSleep[b.id];
+                            if(!ms?.startVal||!ms?.endVal)return;
+                            const startMs=new Date(ms.startVal).getTime();
+                            const endMs=new Date(ms.endVal).getTime();
+                            if(endMs<=startMs)return;
+                            const durationSecs=Math.round((endMs-startMs)/1000);
+                            await onLogSleep(b.id,new Date(ms.startVal).toISOString(),new Date(ms.endVal).toISOString(),durationSecs);
+                            setManualSleep(s=>{const n={...s};delete n[b.id];return n;});
+                          }} style={{flex:2,padding:"10px",background:"linear-gradient(135deg,#60A5FA,#3B82F6)",border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>
+                            💾 Save Sleep
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {/* Diapers */}
+              <div>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>🩲 Diaper</div>
+                <div style={{display:"flex",gap:8}}>
+                  {DIAPER_TYPES.map(dt=>(
+                    <button key={dt.value} onClick={()=>{onLogDiaper(b.id,dt.value);setDiaperFlash(f=>({...f,[b.id]:dt.value}));setTimeout(()=>setDiaperFlash(f=>{const n={...f};delete n[b.id];return n;}),2000);}}
+                      style={{flex:1,padding:"11px 4px",background:diaperFlash[b.id]===dt.value?dt.color:T.bg3,border:"2px solid "+(diaperFlash[b.id]===dt.value?dt.color:T.bord),borderRadius:14,color:diaperFlash[b.id]===dt.value?"#fff":T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s"}}>
+                      {diaperFlash[b.id]===dt.value?"✓ Logged!":dt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Activity history */}
+          <div style={{fontSize:17,fontWeight:900,color:T.text,marginBottom:12,marginTop:8}}>Activity History</div>
+          {babies.length>1&&(
+            <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              <button onClick={()=>setActivityFilter("all")} style={{padding:"7px 16px",background:activityFilter==="all"?"#34D399":T.bg3,border:"none",borderRadius:20,color:activityFilter==="all"?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>All</button>
+              {babies.map(b=><button key={b.id} onClick={()=>setActivityFilter(b.id)} style={{padding:"7px 16px",background:activityFilter===b.id?b.color:T.bg3,border:"none",borderRadius:20,color:activityFilter===b.id?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{b.name}</button>)}
+            </div>
+          )}
+          {filtered.length===0&&<div style={{textAlign:"center",color:T.text3,padding:"40px 0",fontSize:14}}>No activities yet</div>}
+          {filtered.length>0&&(()=>{
+            const actGroups={};
+            filtered.forEach(a=>{const k=fmtDate(a.startTime);if(!actGroups[k])actGroups[k]=[];actGroups[k].push(a);});
+            return Object.entries(actGroups).map(([dateLabel,groupItems])=>(
+              <div key={dateLabel}>
+                <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:8,marginTop:4,paddingLeft:4}}>{dateLabel}</div>
+                {groupItems.map(a=>{
+            const b=babies.find(x=>x.id===a.babyId);
+            const isEditing=editAct?.id===a.id;
+            const ac=actColor(a);
+            return(
+              <div key={a.id} style={{background:T.bg2,borderRadius:18,marginBottom:8,overflow:"hidden"}}>
+                {!isEditing&&(
+                  <div onClick={()=>{setEditAct(a);setEditStart(a.startTime?new Date(a.startTime).toISOString().slice(0,16):"");setEditEnd(a.endTime?new Date(a.endTime).toISOString().slice(0,16):"");setEditDiaper(a.diaperType||"");}} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                    <div style={{width:44,height:44,borderRadius:14,background:ac+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>{actIcon(a)}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:900,color:T.text,fontSize:15}}>{actLabel(a)}</div>
+                      <div style={{fontSize:12,color:T.text3,marginTop:2}}>
+                        {b?.name} · {fmt(a.startTime)}
+                        {a.loggedBy&&<span style={{marginLeft:6,background:T.dark?"#2D1F45":"#F0EBF8",color:"#A78BFA",fontWeight:700,padding:"1px 7px",borderRadius:6,fontSize:11}}>👤 {a.loggedBy}</span>}
+                      </div>
+                    </div>
+                    <span style={{fontSize:11,color:T.text3}}>✏️</span>
+                  </div>
+                )}
+                {isEditing&&(
+                  <div style={{padding:"16px"}}>
+                    <div style={{fontSize:12,color:T.text3,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:.8}}>✏️ Edit {a.type==="diaper"?"Diaper":(a.type==="sleep"?"Sleep":"Sucking")}</div>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>Start Time</div>
+                    <input type="datetime-local" value={editStart} onChange={e=>setEditStart(e.target.value)}
+                      style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:10}}/>
+                    {a.type!=="diaper"&&<>
+                      <div style={{fontSize:11,color:T.text3,marginBottom:4,fontWeight:600}}>End Time</div>
+                      <input type="datetime-local" value={editEnd} onChange={e=>setEditEnd(e.target.value)}
+                        style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:10}}/>
+                    </>}
+                    {a.type==="diaper"&&(
+                      <div style={{display:"flex",gap:6,marginBottom:12}}>
+                        {DIAPER_TYPES.map(dt=><button key={dt.value} onClick={()=>setEditDiaper(dt.value)} style={{flex:1,padding:"8px 4px",background:editDiaper===dt.value?dt.color:T.bg3,border:"none",borderRadius:12,color:editDiaper===dt.value?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{dt.label}</button>)}
+                      </div>
+                    )}
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>setEditAct(null)} style={{flex:1,padding:"10px",background:T.bg3,border:"none",borderRadius:12,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                      <button onClick={()=>setConfirmDelAct(a)} style={{padding:"10px 14px",background:"#FFF0F3",border:"none",borderRadius:12,color:"#FF4D6D",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                      <button onClick={saveEditAct} style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#34D399,#10B981)",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+                })}
+              </div>
+            ));
+          })()}
+
+          {/* Confirm delete activity */}
+          {confirmDelAct&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:24}}>
+              <div style={{background:T.bg2,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:380}}>
+                <div style={{fontSize:32,marginBottom:12,textAlign:"center"}}>🗑️</div>
+                <div style={{fontSize:17,fontWeight:900,color:T.text,marginBottom:8,textAlign:"center"}}>Delete this activity?</div>
+                <div style={{fontSize:13,color:T.text2,marginBottom:24,textAlign:"center"}}>{actLabel(confirmDelAct)} at {fmt(confirmDelAct.startTime)}</div>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>setConfirmDelAct(null)} style={{flex:1,padding:"13px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  <button onClick={async()=>{await onDeleteActivity(confirmDelAct.id);setConfirmDelAct(null);setEditAct(null);}} style={{flex:1,padding:"13px",background:"#FF4D6D",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── MAIN APP ──────────────────────────────────────────────
+    function App(){
+      const {dark,toggle:toggleTheme}=useTheme();
+      function toggleUnit(){setUnit(u=>{const n=u==='ml'?'oz':'ml';localStorage.setItem('bf_unit',n);return n;});}
+      const T=useT();
+      const [user,setUser]=useState(undefined);
+      const [unit,setUnit]=useState(()=>localStorage.getItem('bf_unit')||'ml');
+      const {babies,logs,activities,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity}=useFirestore(user?.uid);
+
+      const [activeBabyId,setActiveBabyId]=useState(null);
+      const [amount,setAmount]=useState(60);
+      const [milkType,setMilkType]=useState("Breast Milk");
+      const [view,setView]=useState("log");
+      const [viewAnim,setViewAnim]=useState(false);
+      function switchView(v){setViewAnim(true);setTimeout(()=>{setView(v);setViewAnim(false);},80);}
+      const VIEWS=["log","activity","insights","history","dashboard"];
+      const swipeStart=React.useRef(null);
+      function onTouchStart(e){swipeStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};}
+      function onTouchEnd(e){
+        if(!swipeStart.current)return;
+        const dx=e.changedTouches[0].clientX-swipeStart.current.x;
+        const dy=e.changedTouches[0].clientY-swipeStart.current.y;
+        if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5){
+          const idx=VIEWS.indexOf(view);
+          if(dx<0&&idx<VIEWS.length-1)switchView(VIEWS[idx+1]);
+          if(dx>0&&idx>0)switchView(VIEWS[idx-1]);
+        }
+        swipeStart.current=null;
+      }
+      const [flashSaved,setFlashSaved]=useState(false);
+      const [addingBaby,setAddingBaby]=useState(false);
+      const [newName,setNewName]=useState("");
+      const [editingId,setEditingId]=useState(null);
+      const [editingName,setEditingName]=useState("");
+      const [colorPickerId,setColorPickerId]=useState(null);
+      const [confirmDeleteBaby,setConfirmDeleteBaby]=useState(null);
+      const [nowStr,setNowStr]=useState("");
+      const [nowMs,setNowMs]=useState(Date.now());
+      const [customTime,setCustomTime]=useState("");
+      const [editingTime,setEditingTime]=useState(false);
+      const [showTimerSheet,setShowTimerSheet]=useState(false);
+      const [timerBabyId,setTimerBabyId]=useState(null);
+      const [alarmFiring,setAlarmFiring]=useState(false);
+      const [alarmBabyId,setAlarmBabyId]=useState(null);
+      const [sh,setSh]=useState(2);
+      const [sm,setSm]=useState(0);
+      const [se,setSe]=useState(false);
+      const [showPartner,setShowPartner]=useState(false);
+      const [showLinkPartner,setShowLinkPartner]=useState(false);
+      const [linkCode,setLinkCode]=useState("");
+      const [linkError,setLinkError]=useState("");
+      const [linkLoading,setLinkLoading]=useState(false);
+      const [linkSuccess,setLinkSuccess]=useState(false);
+      const [undoLog,setUndoLog]=useState(null); // {log, timerId}
+      const [editingLog,setEditingLog]=useState(null); // {log} for inline edit
+      const [editLogAmount,setEditLogAmount]=useState(0);
+      const [editLogMilk,setEditLogMilk]=useState("");
+      const [editLogBaby,setEditLogBaby]=useState("");
+      const [editLogTime,setEditLogTime]=useState("");
+      const [historyFilter,setHistoryFilter]=useState("all"); // "all" or babyId
+      const [confirmDeleteLog,setConfirmDeleteLog]=useState(null);
+      const [miniOpen,setMiniOpen]=useState({}); // {babyId: bool}
+      // ── Activity tab state ──
+      const [suckingActive,setSuckingActive]=useState({}); // {babyId: {startMs, babyId}}
+      const [sleepActive,setSleepActive]=useState({});     // {babyId: {startMs, babyId}}
+      const [suckingCheck,setSuckingCheck]=useState(null); // {babyId} — 15min prompt
+      const [editActivity,setEditActivity]=useState(null); // activity being edited
+      const [activityFilter,setActivityFilter]=useState("all");
+      const [dismissedHungry,setDismissedHungry]=useState({});
+      const [dismissedIntake,setDismissedIntake]=useState({}); // {babyId: true}
+      const [hungryAlertLog,setHungryAlertLog]=useState(null); // insight that triggered action
+      const [expandedInsight,setExpandedInsight]=useState(null);
+      const alarmDone=useRef({});
+      const editRef=useRef(null);
+
+      useEffect(()=>auth.onAuthStateChanged(u=>setUser(u||null)),[]);
+      useEffect(()=>{if(babies.length>0&&!activeBabyId)setActiveBabyId(babies[0].id);},[babies]);
+      useEffect(()=>{
+        function tick(){const n=Date.now();setNowMs(n);const d=new Date(n);setNowStr(d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+" · "+d.toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"}));}
+        tick();const t=setInterval(tick,1000);return()=>clearInterval(t);
+      },[]);
+      useEffect(()=>{
+        babies.forEach(b=>{const timer=timers[b.id];if(!timer?.enabled)return;const last=[...logs].filter(l=>l.babyId===b.id).sort((a,c)=>new Date(c.timestamp)-new Date(a.timestamp))[0];if(!last)return;const nx=new Date(last.timestamp).getTime()+timer.totalMins*60000,key=`${b.id}-${last.id}`;if(nowMs>=nx&&!alarmDone.current[key]&&!alarmFiring){alarmDone.current[key]=true;setAlarmBabyId(b.id);setAlarmFiring(true);alarm.start();}});
+      },[nowMs]);
+      useEffect(()=>{if(editingId!==null&&editRef.current)editRef.current.focus();},[editingId]);
+
+      const ab=babies.find(b=>b.id===activeBabyId)||babies[0];
+      const mc=MILK_TYPES.find(m=>m.value===milkType)?.color||"#FF6B9D";
+      const bl=logs.filter(l=>l.babyId===activeBabyId);
+      const ll=[...bl].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))[0];
+      const tl=bl.filter(l=>new Date(l.timestamp).toDateString()===new Date().toDateString());
+      const tt=tl.reduce((s,l)=>s+l.amount,0);
+      const at=timers[activeBabyId];
+      const llms=ll?new Date(ll.timestamp).getTime():null;
+      const nfms=llms&&at?.enabled?llms+at.totalMins*60000:null;
+      const cms=nfms?nfms-nowMs:null;
+      const td=cms!==null&&cms<=0;
+      const tp=nfms&&llms?Math.min(1,(nowMs-llms)/(at.totalMins*60000)):0;
+      const tsb=babies.find(b=>b.id===timerBabyId);
+      const sl=[...logs].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+      const gr={};sl.forEach(l=>{const k=fmtDate(l.timestamp);if(!gr[k])gr[k]=[];gr[k].push(l);});
+
+      // Count urgent insights for badge
+      React.useEffect(()=>{
+        if(!familyId)return;
+        db.collection(`families/${familyId}/activeTimers`).get().then(snap=>{
+          const sl={};const su={};
+          snap.forEach(doc=>{const d=doc.data();
+            if(d.type==='sleep')sl[d.babyId]={startMs:d.startMs,babyId:d.babyId};
+            if(d.type==='sucking')su[d.babyId]={startMs:d.startMs,babyId:d.babyId};
+          });
+          if(Object.keys(sl).length>0)setSleepActive(sl);
+          if(Object.keys(su).length>0)setSuckingActive(su);
+        }).catch(()=>{});
+      },[familyId]);
+      const urgentCount=computeInsights(babies,logs,dismissedHungry,dismissedIntake).filter(i=>i.urgent).length;
+      function dismissIntake(babyId){setDismissedIntake(d=>({...d,[babyId]:true}));}
+
+      // Existing user links to a partner's family via invite code
+      async function doLinkToFamily(){
+        const code=linkCode.trim().toUpperCase();
+        if(code.length<6){setLinkError("Enter the 6-character code");return;}
+        setLinkLoading(true);setLinkError("");
+        try{
+          const snap=await db.collection("families").where("code","==",code).limit(1).get();
+          if(snap.empty){setLinkError("Code not found. Check and try again.");setLinkLoading(false);return;}
+          const fid=snap.docs[0].id;
+          if(fid===user.uid){setLinkError("That's your own invite code!");setLinkLoading(false);return;}
+          await db.collection("users").doc(user.uid).set({familyId:fid,role:"partner",joinedAt:new Date().toISOString()},{merge:true});
+          setLinkSuccess(true);
+          setTimeout(()=>{setShowLinkPartner(false);setLinkSuccess(false);setLinkCode("");window.location.reload();},1500);
+        }catch(e){setLinkError(e.message);setLinkLoading(false);}
+      }
+
+      function swBaby(id){setActiveBabyId(id);setView("log");const l=[...logs].filter(x=>x.babyId===id).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))[0];if(l){setAmount(l.amount);setMilkType(l.milkType);}}
+      async function logFeed(amt,milk){
+        const ts=editingTime&&customTime?new Date(customTime).toISOString():new Date().toISOString();
+        const loggedBy=user.displayName||user.email?.split("@")[0]||"You";
+        await addLog({babyId:activeBabyId,amount:amt,milkType:milk,timestamp:ts,loggedBy});
+        setDismissedIntake(d=>{const n={...d};delete n[activeBabyId];return n;});
+        setFlashSaved(true);setEditingTime(false);setTimeout(()=>setFlashSaved(false),2000);
+        setDismissedHungry(d=>{const n={...d};delete n[activeBabyId];return n;});
+      }
+      async function doAddBaby(){
+        const n=newName.trim();if(!n)return;
+        const id=`baby_${Date.now()}`;
+        await saveBaby({id,name:n,color:BABY_COLORS[babies.length%BABY_COLORS.length]});
+        await saveTimer(id,{enabled:false,totalMins:120});
+        // Create family doc if first baby (owner)
+        if(babies.length===0&&familyId){
+          await db.collection("families").doc(familyId).set({ownerId:user.uid,createdAt:new Date().toISOString()},{merge:true});
+          await db.collection("users").doc(user.uid).set({familyId,role:"owner"},{merge:true});
+        }
+        setNewName("");setAddingBaby(false);setActiveBabyId(id);setView("log");
+      }
+      async function doDelBaby(){if(!confirmDeleteBaby)return;await deleteBaby(confirmDeleteBaby.id);setConfirmDeleteBaby(null);if(activeBabyId===confirmDeleteBaby.id){const r=babies.filter(b=>b.id!==confirmDeleteBaby.id);setActiveBabyId(r[0]?.id);}}
+      async function saveEditName(){const n=editingName.trim();if(n){const b=babies.find(x=>x.id===editingId);if(b)await saveBaby({...b,name:n});}setEditingId(null);}
+      async function chColor(id,c){const b=babies.find(x=>x.id===id);if(b)await saveBaby({...b,color:c});setColorPickerId(null);}
+      function stopAlarm(){alarm.stop();setAlarmFiring(false);setAlarmBabyId(null);}
+      function openSheet(bid){const t=timers[bid]||{enabled:false,totalMins:120};setSh(Math.floor(t.totalMins/60));setSm(t.totalMins%60);setSe(t.enabled);setTimerBabyId(bid);setShowTimerSheet(true);}
+      async function doSaveTimer(){const tot=sh*60+sm;if(tot===0&&se)return;await saveTimer(timerBabyId,{totalMins:tot,enabled:se});setShowTimerSheet(false);}
+
+      // Undo delete with 6-second window
+      async function saveEditLog(){
+        if(!editingLog)return;
+        const b=babies.find(x=>x.name===editLogBaby||x.id===editLogBaby);
+        const ts=editLogTime?new Date(editLogTime).toISOString():editingLog.log.timestamp;
+        const orig=editingLog.log;
+        const changes=[];
+        if(Number(editLogAmount)!==orig.amount)changes.push(`amount ${orig.amount}ml to ${editLogAmount}ml`);
+        if(editLogMilk!==orig.milkType)changes.push(`type changed`);
+        if(ts!==orig.timestamp)changes.push("time edited");
+        const editEntry=changes.length>0?{by:user?.displayName||"You",at:new Date().toISOString(),changes:changes.join(", ")}:null;
+        const prevHistory=Array.isArray(orig.editHistory)?orig.editHistory:[];
+        const updated={...orig,amount:Number(editLogAmount),milkType:editLogMilk,babyId:b?b.id:orig.babyId,timestamp:ts,editHistory:[...prevHistory,...(editEntry?[editEntry]:[])].slice(-10)};
+        const{id,...data}=updated;
+        await db.collection(`families/${familyId}/logs`).doc(id).set(data);
+        setEditingLog(null);
+      }
+      async function handleDeleteLog(log){
+        setConfirmDeleteLog(log);
+      }
+      async function doConfirmDeleteLog(){
+        if(!confirmDeleteLog)return;
+        await deleteLog(confirmDeleteLog.id);
+        if(undoLog?.timerId)clearTimeout(undoLog.timerId);
+        const timerId=setTimeout(()=>setUndoLog(null),6000);
+        setUndoLog({log:confirmDeleteLog,timerId});
+        setConfirmDeleteLog(null);
+        setEditingLog(null);
+      }
+      async function handleUndo(){
+        if(!undoLog)return;
+        clearTimeout(undoLog.timerId);
+        await restoreLog(undoLog.log);
+        setUndoLog(null);
+      }
+
+      // ── ACTIVITY HELPERS ────────────────────────────────────
+      const loggedByName=()=>user.displayName||user.email?.split("@")[0]||"You";
+
+      // SUCKING
+      function startSucking(babyId){
+        const startMs=Date.now();
+        setSuckingActive(s=>({...s,[babyId]:{startMs,babyId}}));
+        if(familyId){db.collection(`families/${familyId}/activeTimers`).doc(`sucking_${babyId}`).set({babyId,type:'sucking',startMs}).catch(()=>{});}
+        // 15 min prompt
+        setTimeout(()=>{
+          setSuckingCheck(c=>c?c:{babyId});
+        },15*60*1000);
+      }
+      async function finishSucking(babyId,overrideStartMs){
+        if(familyId){db.collection(`families/${familyId}/activeTimers`).doc(`sucking_${babyId}`).delete().catch(()=>{});}
+        const sa=suckingActive[babyId];
+        if(!sa&&!overrideStartMs)return;
+        const startMs=overrideStartMs||sa.startMs;
+        const durationSecs=Math.round((Date.now()-startMs)/1000);
+        await addActivity({type:"sucking",babyId,startTime:new Date(startMs).toISOString(),endTime:new Date().toISOString(),durationSecs,loggedBy:loggedByName()});
+        setSuckingActive(s=>{const n={...s};delete n[babyId];return n;});
+        setSuckingCheck(null);
+      }
+
+      // SLEEP
+      function startSleep(babyId){
+        const startMs=Date.now();
+        setSleepActive(s=>({...s,[babyId]:{startMs,babyId}}));
+        if(familyId){db.collection(`families/${familyId}/activeTimers`).doc(`sleep_${babyId}`).set({babyId,type:'sleep',startMs}).catch(()=>{});}
+      }
+      async function finishSleep(babyId){
+        if(familyId){db.collection(`families/${familyId}/activeTimers`).doc(`sleep_${babyId}`).delete().catch(()=>{});}
+        const sa=sleepActive[babyId];
+        if(!sa)return;
+        const durationSecs=Math.round((Date.now()-sa.startMs)/1000);
+        await addActivity({type:"sleep",babyId,startTime:new Date(sa.startMs).toISOString(),endTime:new Date().toISOString(),durationSecs,loggedBy:loggedByName()});
+        setSleepActive(s=>{const n={...s};delete n[babyId];return n;});
+      }
+      async function logSleep(babyId,startTime,endTime,durationSecs){
+        await addActivity({type:"sleep",babyId,startTime,endTime,durationSecs,loggedBy:loggedByName()});
+      }
+
+      // DIAPER
+      async function logDiaper(babyId,diaperType){
+        await addActivity({type:"diaper",babyId,diaperType,startTime:new Date().toISOString(),loggedBy:loggedByName()});
+      }
+
+      // FORMAT DURATION
+      function fmtDur(secs){
+        if(!secs)return"—";
+        const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60;
+        if(h>0)return`${h}h ${m}m`;
+        if(m>0)return`${m}m ${s}s`;
+        return`${s}s`;
+      }
+
+      if(user===undefined)return<div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center"}}><div className="spin"/></div>;
+      if(!user)return<AuthScreen onAuth={u=>setUser(u)}/>;
+      if(!ready)return<div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}><div style={{fontSize:40}}>🍼</div><div className="spin"/><div style={{fontSize:13,color:"var(--splash-text)"}}>Syncing...</div></div>;
+
+      // New user onboarding
+      if(babies.length===0)return(
+        <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#f5f0ff,#fff5f9)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px"}}>
+          <div style={{fontSize:72,marginBottom:16}}>👶</div>
+          <div style={{fontSize:24,fontWeight:900,color:T.text,marginBottom:8}}>Welcome to BabyFeed!</div>
+          <div style={{fontSize:14,color:T.text2,marginBottom:40,textAlign:"center"}}>Let's add your baby to get started</div>
+          <div style={{width:"100%",maxWidth:320}}>
+            <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doAddBaby()} placeholder="Enter baby's name"
+              style={{width:"100%",padding:"18px",border:`2.5px solid ${T.bord}`,borderRadius:18,fontSize:18,fontFamily:"inherit",color:T.text,background:T.bg2,marginBottom:16,textAlign:"center",boxSizing:"border-box"}}/>
+            <button onClick={doAddBaby} style={{width:"100%",padding:"18px",background:"linear-gradient(135deg,#FF6B9D,#A78BFA)",border:"none",borderRadius:18,color:"#fff",fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 6px 20px rgba(255,107,157,0.35)"}}>Add Baby 🍼</button>
+          </div>
+          <button onClick={()=>auth.signOut()} style={{marginTop:32,background:"none",border:"none",color:T.text3,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
+        </div>
+      );
+
+      if(!ab)return null;
+
+      return(
+        <div style={{minHeight:"100vh",background:T.bg,fontFamily:"system-ui,sans-serif",maxWidth:430,margin:"0 auto",display:"flex",flexDirection:"column",transition:"background 0.3s",overflowX:"hidden"}}>
+
+          {/* HEADER */}
+          <div style={{background:T.bg2,borderBottom:`1px solid ${T.bord}`,padding:"14px 18px 12px",position:"sticky",top:0,zIndex:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <span style={{fontSize:18,fontWeight:900,color:T.text}}>🍼 BabyFeed</span>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <button onClick={()=>setView(v=>v==="insights"?"log":"insights")} style={{position:"relative",background:view==="insights"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="insights"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+                  {view==="insights"?"← Log":"💡"}
+                  {urgentCount>0&&view!=="insights"&&<span style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:"#FF4D6D"}}/>}
+                </button>
+                <button onClick={()=>setView(v=>v==="dashboard"?"log":"dashboard")} style={{background:view==="dashboard"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="dashboard"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="dashboard"?"← Log":"📊"}</button>
+                <button onClick={()=>setView(v=>v==="activity"?"log":"activity")} style={{position:"relative",background:view==="activity"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="activity"?"#34D399":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+                  {view==="activity"?"← Log":"🏃"}
+                  {(Object.keys(suckingActive).length>0||Object.keys(sleepActive).length>0)&&view!=="activity"&&<span style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:"#34D399"}}/>}
+                </button>
+                <button onClick={()=>setView(v=>v==="history"?"log":"history")} style={{background:view==="history"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="history"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="history"?"← Log":"📋"}</button>
+                <button onClick={toggleTheme} title="Toggle dark mode" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{dark?"☀️":"🌙"}</button>
+                <button onClick={toggleUnit} title="Toggle units" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:T.text2}}>{unit==="ml"?"ml":"oz"}</button>
+                <button onClick={()=>setShowPartner(true)} title="Invite care team" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🤝</button>
+                <button onClick={()=>auth.signOut()} title="Sign out" style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:900}}>
+                  {(user.displayName||user.email||"U")[0].toUpperCase()}
+                </button>
+              </div>
+            </div>
+            {/* Baby tabs */}
+            <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:2}}>
+              {babies.map(b=>{
+                const ia=b.id===activeBabyId&&view!=="history",ie=editingId===b.id,sc=colorPickerId===b.id;
+                return(
+                  <div key={b.id} style={{flexShrink:0,display:"flex",flexDirection:"column",gap:6}}>
+                    <div style={{display:"flex",alignItems:"center",gap:2,padding:"5px 6px 5px 14px",background:ia?b.color:T.bg3,borderRadius:20,transition:"background 0.15s"}}>
+                      {ie?<input ref={editRef} value={editingName} onChange={e=>setEditingName(e.target.value)} onBlur={saveEditName} onKeyDown={e=>{if(e.key==="Enter")saveEditName();if(e.key==="Escape")setEditingId(null);}} style={{width:80,background:"transparent",border:"none",outline:"none",fontSize:13,fontWeight:800,color:ia?"#fff":"#444",fontFamily:"inherit",padding:0}}/>
+                        :<button onClick={()=>swBaby(b.id)} style={{background:"none",border:"none",color:ia?"#fff":"#AAA",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:800,padding:0}}>{b.name}</button>}
+                      <button onClick={()=>{setEditingId(b.id);setEditingName(b.name);swBaby(b.id);setColorPickerId(colorPickerId===b.id?null:b.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"2px 3px",color:ia?"rgba(255,255,255,0.65)":"#CCC",fontSize:11}}>✏</button>
+                      {babies.length>1&&<button onClick={()=>setConfirmDeleteBaby(b)} style={{background:ia?"rgba(255,255,255,0.22)":"#E8E0F8",border:"none",cursor:"pointer",padding:"2px 7px",color:ia?"rgba(255,255,255,0.85)":"#B5ACD8",fontSize:13,borderRadius:10,lineHeight:1,marginRight:2}}>×</button>}
+                    </div>
+                    {sc&&<div style={{display:"flex",gap:6,paddingLeft:4}}>{BABY_COLORS.slice(0,6).map(c=><button key={c} onClick={()=>chColor(b.id,c)} style={{width:22,height:22,borderRadius:"50%",background:c,border:b.color===c?"3px solid #1a1a2e":"3px solid transparent",cursor:"pointer",padding:0}}/>)}</div>}
+                  </div>
+                );
+              })}
+              <button onClick={()=>setAddingBaby(true)} style={{flexShrink:0,padding:"7px 13px",background:"transparent",border:`1.5px dashed ${T.bord}`,borderRadius:20,color:T.text3,fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Add</button>
+            </div>
+          </div>
+
+          <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{flex:1,padding:"18px 18px 130px",overflowX:"hidden",opacity:viewAnim?0:1,transition:"opacity 0.08s ease"}}>
+
+            {/* LOG VIEW */}
+            {view==="log"&&ab&&(
+              <div>
+                {at?.enabled&&(
+                  <div style={{background:td?"#FFF0F0":"#fff",border:`2px solid ${td?"#FF4D6D":ab.color+"44"}`,borderRadius:20,padding:"16px 18px",marginBottom:18}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:18}}>{td?"🔔":"⏰"}</span>
+                        <div>
+                          <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Timer · every {tlabel(at)}</div>
+                          <div style={{fontSize:td?17:22,fontWeight:900,color:td?"#FF4D6D":ab.color,marginTop:2}}>{cms!==null?countdown(cms):"—"}</div>
+                          {!td&&nfms&&<div style={{fontSize:11,color:T.text3,marginTop:1}}>Next at {fmt(new Date(nfms).toISOString())}</div>}
+                        </div>
+                      </div>
+                      <button onClick={()=>openSheet(activeBabyId)} style={{background:ab.color+"18",border:"none",borderRadius:12,padding:"6px 12px",color:ab.color,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Edit</button>
+                    </div>
+                    <div style={{background:T.bg3,borderRadius:8,height:6,overflow:"hidden"}}><div style={{height:"100%",background:td?"#FF4D6D":ab.color,width:`${tp*100}%`,borderRadius:8,transition:"width 1s linear"}}/></div>
+                  </div>
+                )}
+                <div style={{background:T.bg2,borderRadius:20,padding:"16px 20px",marginBottom:18,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Last feed</div>
+                    <div style={{fontSize:16,fontWeight:800,color:T.text,marginTop:4}}>{ll?`${ll.amount}ml · ${ll.milkType.split(" ")[0]}`:"None yet"}</div>
+                    {ll&&<div style={{fontSize:12,color:T.text3,marginTop:2}}>{timeSince(ll.timestamp)}{ll.loggedBy&&<span style={{marginLeft:8,background:"#F0EBF8",color:"#A78BFA",fontWeight:700,padding:"1px 7px",borderRadius:6,fontSize:11}}>👤 {ll.loggedBy}</span>}</div>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Today total</div>
+                    <div style={{fontSize:28,fontWeight:900,color:ab.color,lineHeight:1.1,marginTop:4}}>{tt}<span style={{fontSize:13,fontWeight:500,color:T.text3}}>ml</span></div>
+                    <div style={{fontSize:11,color:T.text3}}>{tl.length} feed{tl.length!==1?"s":""}</div>
+                  </div>
+                </div>
+                <div style={{background:T.bg2,borderRadius:16,padding:"12px 18px",marginBottom:18}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:18}}>⏱</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>{editingTime?"Custom Time":"Time — auto set"}</div>
+                      {!editingTime&&<div style={{fontSize:15,fontWeight:800,color:T.text,marginTop:2}}>{nowStr}</div>}
+                    </div>
+                    <button onClick={()=>{if(editingTime)setEditingTime(false);else{setEditingTime(true);setCustomTime(new Date().toISOString().slice(0,16));}}} style={{background:editingTime?"#FFF0F5":"#E8F8F0",border:"none",borderRadius:10,padding:"5px 12px",color:editingTime?"#FF6B9D":"#34D399",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{editingTime?"✕ Now":"✏ Edit"}</button>
+                  </div>
+                  {editingTime&&<input type="datetime-local" value={customTime} onChange={e=>setCustomTime(e.target.value)} style={{marginTop:12,width:"100%",padding:"11px 14px",border:"2px solid #FF6B9D",borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.dark?"#2D1525":"#FFF8FB",boxSizing:"border-box"}}/>}
+                </div>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Milk Type</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:22}}>
+                  {MILK_TYPES.map(m=>{const s=milkType===m.value;return<button key={m.value} onClick={()=>setMilkType(m.value)} style={{padding:"17px 6px",background:s?m.color:T.bg2,border:`2.5px solid ${s?m.color:T.bord}`,borderRadius:18,color:s?"#fff":"#AAA",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",transform:s?"scale(1.04)":"scale(1)",boxShadow:s?`0 6px 18px ${m.color}44`:"none"}}>{m.label}</button>;})}
+                </div>
+                {milkType!=="Sucking"&&<>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Amount</div>
+                <div style={{background:T.bg2,borderRadius:24,padding:"10px",marginBottom:22,display:"flex",alignItems:"center",gap:8}}>
+                  <button onClick={()=>setAmount(a=>Math.max(5,a-10))} style={{width:70,height:70,borderRadius:16,background:T.bg3,border:"none",fontSize:30,color:T.text2,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
+                  <div style={{flex:1,textAlign:"center"}}>
+                    <div style={{fontSize:50,fontWeight:900,color:mc,lineHeight:1,letterSpacing:-2}}>{amount}</div>
+                    <div style={{fontSize:13,color:T.text3,fontWeight:600}}>ml</div>
+                    <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:8}}>
+                      <button onClick={()=>setAmount(a=>Math.max(5,a-5))} style={{padding:"4px 14px",background:T.bg3,border:"none",borderRadius:8,color:T.text3,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>−5</button>
+                      <button onClick={()=>setAmount(a=>a+5)} style={{padding:"4px 14px",background:T.bg3,border:"none",borderRadius:8,color:T.text3,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>+5</button>
+                    </div>
+                  </div>
+                  <button onClick={()=>setAmount(a=>a+10)} style={{width:70,height:70,borderRadius:16,background:mc+"22",border:"none",fontSize:30,color:mc,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>+</button>
+                </div>
+                <button onClick={()=>logFeed(amount,milkType)} style={{width:"100%",padding:"19px",background:flashSaved?"#34D399":`linear-gradient(135deg,${mc},${mc}BB)`,border:"none",borderRadius:22,color:"#fff",fontSize:17,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:flashSaved?"0 8px 24px #34D39966":`0 8px 24px ${mc}55`,transition:"background 0.3s",marginBottom:12}}>
+                  {flashSaved?"✓  Feed Logged!":`Log ${fmtAmt(amount,unit)} for ${ab.name}`}
+                </button>
+                </>}
+                {milkType==="Sucking"&&(
+                  <div style={{marginBottom:12}}>
+                    {suckingActive[activeBabyId]?(
+                      <div>
+                        <div style={{background:"#FFF8E7",border:"2px solid #F59E0B44",borderRadius:20,padding:"16px 20px",marginBottom:12,textAlign:"center"}}>
+                          <div style={{fontSize:12,color:"#92660A",fontWeight:700,marginBottom:4,textTransform:"uppercase",letterSpacing:1}}>🫦 Sucking in progress</div>
+                          <div style={{fontSize:36,fontWeight:900,color:"#F59E0B"}}>{fmtDur(Math.round((nowMs-suckingActive[activeBabyId].startMs)/1000))}</div>
+                        </div>
+                        <button onClick={()=>finishSucking(activeBabyId)} style={{width:"100%",padding:"19px",background:"linear-gradient(135deg,#F59E0B,#FBBF24)",border:"none",borderRadius:22,color:"#fff",fontSize:17,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 24px #F59E0B55"}}>
+                          ✓ Finish Sucking
+                        </button>
+                      </div>
+                    ):(
+                      <button onClick={()=>startSucking(activeBabyId)} style={{width:"100%",padding:"19px",background:flashSaved?"#34D399":"linear-gradient(135deg,#F59E0B,#FBBF24)",border:"none",borderRadius:22,color:"#fff",fontSize:17,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 24px #F59E0B55",marginBottom:12}}>
+                        {flashSaved?"✓ Saved!":"🫦 Start Sucking"}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {ll&&<button onClick={()=>logFeed(ll.amount,ll.milkType)} style={{width:"100%",padding:"15px",background:T.bg2,border:`2px solid ${T.bord}`,borderRadius:18,color:T.text2,fontSize:14,cursor:"pointer",fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:10}}><span>↩</span><span>Repeat last — <span style={{color:mc,fontWeight:900}}>{ll.amount}ml {ll.milkType.split(" ")[0]}</span></span></button>}
+                {!at?.enabled&&<button onClick={()=>openSheet(activeBabyId)} style={{width:"100%",padding:"14px",background:T.bg2,border:`2px dashed ${T.bord}`,borderRadius:18,color:T.text3,fontSize:14,cursor:"pointer",fontFamily:"inherit",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>⏰ Set Feeding Timer</button>}
+              </div>
+            )}
+
+            {view==="activity"&&<ActivityView
+              babies={babies} activities={activities} activeBabyId={activeBabyId}
+              suckingActive={suckingActive} sleepActive={sleepActive}
+              onStartSucking={startSucking} onFinishSucking={finishSucking}
+              onStartSleep={startSleep} onFinishSleep={finishSleep} onLogSleep={logSleep}
+              onLogDiaper={logDiaper}
+              onDeleteActivity={deleteActivity} onUpdateActivity={updateActivity}
+              fmtDur={fmtDur} nowMs={nowMs}
+              activityFilter={activityFilter} setActivityFilter={setActivityFilter}
+            />}
+
+            {view==="insights"&&<InsightsView babies={babies} logs={logs}
+  onLogFeed={bid=>{setActiveBabyId(bid);setView("log");}}
+  onDismissHungry={bid=>setDismissedHungry(d=>({...d,[bid]:Date.now()}))}
+  dismissedHungry={dismissedHungry}
+              dismissedIntake={dismissedIntake}
+              onDismissIntake={dismissIntake}
+/>}
+            {view==="dashboard"&&<DashboardView babies={babies} logs={logs}/>}
+
+            {view==="history"&&(
+              <div>
+                <div style={{fontSize:17,fontWeight:900,color:T.text,marginBottom:14}}>Feed History</div>
+                {/* Baby filter tabs */}
+                {babies.length>1&&(
+                  <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+                    <button onClick={()=>setHistoryFilter("all")} style={{padding:"7px 16px",background:historyFilter==="all"?"#7C5CBF":T.bg3,border:"none",borderRadius:20,color:historyFilter==="all"?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>All</button>
+                    {babies.map(b=><button key={b.id} onClick={()=>setHistoryFilter(b.id)} style={{padding:"7px 16px",background:historyFilter===b.id?b.color:T.bg3,border:"none",borderRadius:20,color:historyFilter===b.id?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{b.name}</button>)}
+                  </div>
+                )}
+                {(()=>{
+                  const filteredLogs=historyFilter==="all"?sl:sl.filter(l=>l.babyId===historyFilter);
+                  const fgr={};filteredLogs.forEach(l=>{const k=fmtDate(l.timestamp);if(!fgr[k])fgr[k]=[];fgr[k].push(l);});
+                  // Sort each group newest first, then sort groups newest first
+                  Object.keys(fgr).forEach(k=>{fgr[k].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));});
+                  const sortedEntries=Object.entries(fgr).sort((a,b)=>new Date(b[1][0].timestamp)-new Date(a[1][0].timestamp));
+                  if(sortedEntries.length===0)return<div style={{textAlign:"center",color:T.text3,padding:"50px 0",fontSize:15}}>No logs yet 🍼</div>;
+                  return sortedEntries.map(([date,dl])=>(
+                    <div key={date} style={{marginBottom:22}}>
+                      <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>{date}</div>
+                      {dl.map(log=>{
+                        const b=babies.find(x=>x.id===log.babyId),m=MILK_TYPES.find(m=>m.value===log.milkType);
+                        const isEditing=editingLog?.log?.id===log.id;
+                        return(
+                          <div key={log.id} style={{background:T.bg2,borderRadius:18,marginBottom:8,overflow:"hidden"}}>
+                            {/* Normal row — tap to edit */}
+                            {!isEditing&&(
+                              <div onClick={()=>{setEditingLog({log});setEditLogAmount(log.amount);setEditLogMilk(log.milkType);setEditLogBaby(b?.name||"");setEditLogTime(new Date(log.timestamp).toISOString().slice(0,16));}} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                                <div style={{width:44,height:44,borderRadius:14,background:(b?.color||"#eee")+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:13,fontWeight:900,color:b?.color}}>{b?.name?.[0]||"?"}</span></div>
+                                <div style={{flex:1}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                    <span style={{fontWeight:900,color:T.text,fontSize:16}}>{log.amount}ml</span>
+                                    <span style={{fontSize:11,fontWeight:700,color:m?.color,background:(m?.color||"#eee")+"22",padding:"3px 10px",borderRadius:8}}>{log.milkType.split(" ")[0]}</span>
+                                  </div>
+                                  <div style={{fontSize:12,color:T.text3,marginTop:3}}>
+                                    {b?.name||"Unknown"} · {fmt(log.timestamp)}
+                                    {log.loggedBy&&<span style={{marginLeft:6,background:T.dark?"#2D1F45":"#F0EBF8",color:"#A78BFA",fontWeight:700,padding:"2px 8px",borderRadius:6,fontSize:11}}>👤 {log.loggedBy.split("@")[0]}</span>}
+                                  </div>
+                                </div>
+                                <span style={{fontSize:11,color:T.text3,fontWeight:600}}>✏️</span>
+                              </div>
+                            )}
+                            {/* Expanded edit row */}
+                            {isEditing&&(
+                              <div style={{padding:"16px"}}>
+                                <div style={{fontSize:12,color:T.text3,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:.8}}>✏️ Edit Feed</div>
+                                {/* Time editor */}
+                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Time</div>
+                                <input type="datetime-local" value={editLogTime} onChange={e=>setEditLogTime(e.target.value)}
+                                  style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:12}}/>
+                                {/* Baby selector */}
+                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Baby</div>
+                                <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+                                  {babies.map(bb=><button key={bb.id} onClick={()=>setEditLogBaby(bb.name)} style={{padding:"6px 14px",background:editLogBaby===bb.name?bb.color:T.bg3,border:"none",borderRadius:12,color:editLogBaby===bb.name?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{bb.name}</button>)}
+                                </div>
+                                {/* Milk type */}
+                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Milk Type</div>
+                                <div style={{display:"flex",gap:6,marginBottom:12}}>
+                                  {MILK_TYPES.map(mt=><button key={mt.value} onClick={()=>setEditLogMilk(mt.value)} style={{flex:1,padding:"8px 4px",background:editLogMilk===mt.value?mt.color:T.bg3,border:"none",borderRadius:12,color:editLogMilk===mt.value?"#fff":T.text2,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{mt.label}</button>)}
+                                </div>
+                                {/* Amount */}
+                                <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Amount</div>
+                                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,background:T.bg3,borderRadius:14,padding:"8px 12px"}}>
+                                  <button onClick={()=>setEditLogAmount(a=>Math.max(5,Number(a)-5))} style={{width:36,height:36,borderRadius:10,background:T.bg2,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>−</button>
+                                  <input type="number" value={editLogAmount} onChange={e=>setEditLogAmount(e.target.value)} style={{flex:1,textAlign:"center",fontSize:22,fontWeight:900,color:T.text,background:"transparent",border:"none",outline:"none",fontFamily:"inherit"}}/>
+                                  <span style={{fontSize:13,color:T.text3,fontWeight:600}}>ml</span>
+                                  <button onClick={()=>setEditLogAmount(a=>Number(a)+5)} style={{width:36,height:36,borderRadius:10,background:T.bg2,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>+</button>
+                                </div>
+                                {/* Actions */}
+                                <div style={{display:"flex",gap:8}}>
+                                  <button onClick={()=>setEditingLog(null)} style={{flex:1,padding:"10px",background:T.bg3,border:"none",borderRadius:12,color:T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                                  <button onClick={()=>setConfirmDeleteLog(log)} style={{padding:"10px 16px",background:"#FFF0F3",border:"none",borderRadius:12,color:"#FF4D6D",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑 Delete</button>
+                                  {editingLog.log.editHistory?.length>0&&(
+                                    <div style={{marginBottom:8,padding:"8px 10px",background:T.bg3,borderRadius:8}}>
+                                      <div style={{fontSize:9,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:4}}>Edit History</div>
+                                      {editingLog.log.editHistory.slice(-3).map((h,i)=>(
+                                        <div key={i} style={{fontSize:10,color:T.text3,marginBottom:2}}>
+                                          <span style={{color:"#A78BFA",fontWeight:700}}>{h.by}</span>: {h.changes}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <button onClick={saveEditLog} style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#7C5CBF,#A78BFA)",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Save</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* BOTTOM BAR */}
+          <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:T.bg2,borderTop:`1px solid ${T.bord}`,padding:`10px 16px calc(16px + env(safe-area-inset-bottom))`,display:"flex",gap:10}}>
+            {babies.map(b=>{
+              const bl2=[...logs].filter(l=>l.babyId===b.id).sort((a,c)=>new Date(c.timestamp)-new Date(a.timestamp));
+              const last=bl2[0];
+              const ia=b.id===activeBabyId&&view==="log",bt=timers[b.id],bms=last?new Date(last.timestamp).getTime():null;
+              const nx=bms&&bt?.enabled?bms+bt.totalMins*60000:null,due=nx&&nx-Date.now()<=0;
+              return(
+                <div key={b.id} style={{flex:1,display:"flex",flexDirection:"column",gap:4}}>
+                  <button onClick={()=>swBaby(b.id)} style={{width:"100%",padding:"10px 8px",background:ia?b.color+"18":T.bg3,border:`2px solid ${ia?b.color:"transparent"}`,borderRadius:16,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",position:"relative"}}>
+                    {due&&<span style={{position:"absolute",top:6,right:8,width:8,height:8,borderRadius:"50%",background:"#FF4D6D"}}/>}
+                    <div style={{fontSize:13,fontWeight:900,color:ia?b.color:T.text2}}>{b.name}</div>
+                    <div style={{fontSize:10,color:T.text3,marginTop:2}}>{last?timeSince(last.timestamp):"no feeds"}</div>
+                  </button>
+                  <button onClick={()=>setMiniOpen(x=>({...x,[b.id]:!x[b.id]}))} style={{fontSize:10,color:T.text3,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,padding:"2px 0"}}>{miniOpen[b.id]?"▲ hide":"▼ last 10"}</button>
+                  {miniOpen[b.id]&&(
+                    <div style={{background:T.bg3,borderRadius:12,padding:"8px 10px",maxHeight:200,overflowY:"auto"}}>
+                      {bl2.slice(0,10).length===0&&<div style={{fontSize:11,color:T.text3,textAlign:"center"}}>No feeds yet</div>}
+                      {bl2.slice(0,10).map(l=>{const mt=MILK_TYPES.find(m=>m.value===l.milkType);return(
+                        <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${T.bord}`}}>
+                          <span style={{fontSize:11,fontWeight:800,color:b.color}}>{l.amount}ml</span>
+                          <span style={{fontSize:10,color:mt?.color,fontWeight:700}}>{l.milkType.split(" ")[0]}</span>
+                          <span style={{fontSize:10,color:T.text3}}>{fmt(l.timestamp)}</span>
+                          {l.loggedBy&&<span style={{fontSize:9,color:"#A78BFA",fontWeight:700}}>👤{l.loggedBy}</span>}
+                        </div>
+                      );})}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* UNDO TOAST */}
+          {/* CONFIRM DELETE LOG */}
+          {confirmDeleteLog&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:24}}>
+              <div style={{background:T.bg2,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:380}}>
+                <div style={{fontSize:32,marginBottom:12,textAlign:"center"}}>🗑️</div>
+                <div style={{fontSize:18,fontWeight:900,color:T.text,marginBottom:8,textAlign:"center"}}>Delete this feed?</div>
+                <div style={{fontSize:13,color:T.text2,marginBottom:24,textAlign:"center",lineHeight:1.6}}>
+                  <strong>{confirmDeleteLog.amount}ml {confirmDeleteLog.milkType.split(" ")[0]}</strong> at {fmt(confirmDeleteLog.timestamp)}<br/>This can be undone within 6 seconds.
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>setConfirmDeleteLog(null)} style={{flex:1,padding:"13px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+                  <button onClick={doConfirmDeleteLog} style={{flex:1,padding:"13px",background:"#FF4D6D",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Yes, Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {undoLog&&(
+            <div className="undo-toast" style={{position:"fixed",bottom:`calc(90px + env(safe-area-inset-bottom))`,left:"50%",transform:"translateX(-50%)",background:"#1a1a2e",borderRadius:16,padding:"14px 20px",display:"flex",alignItems:"center",gap:16,zIndex:300,boxShadow:"0 8px 32px rgba(0,0,0,0.25)",width:"calc(100% - 36px)",maxWidth:400}}>
+              <span style={{fontSize:13,color:"#fff",fontWeight:600,flex:1}}>Feed deleted</span>
+              <button onClick={handleUndo} style={{background:"#7C5CBF",border:"none",borderRadius:10,padding:"8px 16px",color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>Undo</button>
+            </div>
+          )}
+
+          {/* TIMER SHEET */}
+          {showTimerSheet&&tsb&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.5)",display:"flex",alignItems:"flex-end",zIndex:100}} onClick={()=>setShowTimerSheet(false)}>
+              <div style={{background:T.bg2,borderRadius:"26px 26px 0 0",padding:"28px 22px 46px",width:"100%",maxWidth:430,margin:"0 auto"}} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:4}}>⏰ Feeding Timer</div>
+                <div style={{fontSize:13,color:T.text2,marginBottom:22}}>for <strong style={{color:tsb.color}}>{tsb.name}</strong></div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:T.bg3,borderRadius:16,padding:"14px 18px",marginBottom:20}}>
+                  <span style={{fontSize:15,fontWeight:700,color:T.text}}>Timer {se?"On":"Off"}</span>
+                  <div onClick={()=>setSe(x=>!x)} style={{width:50,height:28,borderRadius:14,background:se?tsb.color:T.bg4,cursor:"pointer",position:"relative",transition:"background 0.2s"}}><div style={{position:"absolute",top:3,left:se?24:3,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.2)"}}/></div>
+                </div>
+                <div style={{opacity:se?1:0.4,pointerEvents:se?"auto":"none"}}>
+                  <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:14}}>Feed every</div>
+                  <div style={{display:"flex",gap:12,marginBottom:16}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,color:T.text2,fontWeight:700,marginBottom:8,textAlign:"center"}}>Hours</div>
+                      <div style={{display:"flex",alignItems:"center",background:T.bg3,borderRadius:16,overflow:"hidden"}}>
+                        <button onClick={()=>setSh(h=>Math.max(0,h-1))} style={{padding:"12px 16px",background:"none",border:"none",fontSize:22,color:T.text2,cursor:"pointer"}}>−</button>
+                        <div style={{flex:1,textAlign:"center",fontSize:28,fontWeight:900,color:tsb.color}}>{sh}</div>
+                        <button onClick={()=>setSh(h=>Math.min(23,h+1))} style={{padding:"12px 16px",background:"none",border:"none",fontSize:22,color:tsb.color,cursor:"pointer"}}>+</button>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",fontSize:24,fontWeight:900,color:T.text3,paddingTop:28}}>:</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,color:T.text2,fontWeight:700,marginBottom:8,textAlign:"center"}}>Minutes</div>
+                      <div style={{display:"flex",alignItems:"center",background:T.bg3,borderRadius:16,overflow:"hidden"}}>
+                        <button onClick={()=>setSm(m=>Math.max(0,m-5))} style={{padding:"12px 16px",background:"none",border:"none",fontSize:22,color:T.text2,cursor:"pointer"}}>−</button>
+                        <div style={{flex:1,textAlign:"center",fontSize:28,fontWeight:900,color:tsb.color}}>{String(sm).padStart(2,"0")}</div>
+                        <button onClick={()=>setSm(m=>Math.min(55,m+5))} style={{padding:"12px 16px",background:"none",border:"none",fontSize:22,color:tsb.color,cursor:"pointer"}}>+</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"center",fontSize:13,color:T.text2,marginBottom:14}}>{sh===0&&sm===0?<span style={{color:"#FF4D6D"}}>Set at least 1 minute</span>:<span>Remind every <strong style={{color:tsb.color}}>{sh>0?`${sh}h `:""}{sm>0?`${sm}m`:""}</strong></span>}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:22,justifyContent:"center"}}>
+                    {[{h:0,m:30,l:"30m"},{h:1,m:0,l:"1h"},{h:1,m:30,l:"1h 30m"},{h:2,m:0,l:"2h"},{h:3,m:0,l:"3h"},{h:4,m:0,l:"4h"}].map(p=>{const a=sh===p.h&&sm===p.m;return<button key={p.l} onClick={()=>{setSh(p.h);setSm(p.m);}} style={{padding:"6px 14px",background:a?tsb.color:T.bg3,border:"none",borderRadius:20,color:a?"#fff":T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{p.l}</button>;})}
+                  </div>
+                </div>
+                <button onClick={doSaveTimer} style={{width:"100%",padding:17,background:`linear-gradient(135deg,${tsb.color},${tsb.color}BB)`,border:"none",borderRadius:16,color:"#fff",fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Save Timer</button>
+              </div>
+            </div>
+          )}
+
+          {/* DELETE BABY CONFIRM */}
+          {confirmDeleteBaby&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.5)",display:"flex",alignItems:"flex-end",zIndex:100}} onClick={()=>setConfirmDeleteBaby(null)}>
+              <div style={{background:T.bg2,borderRadius:"26px 26px 0 0",padding:"28px 22px 46px",width:"100%",maxWidth:430,margin:"0 auto"}} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:36,marginBottom:12}}>🗑️</div>
+                <div style={{fontSize:19,fontWeight:900,color:T.text,marginBottom:8}}>Remove {confirmDeleteBaby.name}?</div>
+                <div style={{fontSize:14,color:T.text2,marginBottom:26,lineHeight:1.6}}>All logs for <strong>{confirmDeleteBaby.name}</strong> will be permanently deleted.</div>
+                <div style={{display:"flex",gap:12}}>
+                  <button onClick={()=>setConfirmDeleteBaby(null)} style={{flex:1,padding:15,background:T.bg3,border:"none",borderRadius:16,color:T.text2,fontSize:15,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>Cancel</button>
+                  <button onClick={doDelBaby} style={{flex:1,padding:15,background:"#FF4D6D",border:"none",borderRadius:16,color:"#fff",fontSize:15,cursor:"pointer",fontFamily:"inherit",fontWeight:900}}>Yes, Remove</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ADD BABY */}
+          {addingBaby&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.5)",display:"flex",alignItems:"flex-end",zIndex:100}} onClick={()=>setAddingBaby(false)}>
+              <div style={{background:T.bg2,borderRadius:"26px 26px 0 0",padding:"28px 22px 46px",width:"100%",maxWidth:430,margin:"0 auto"}} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:18}}>👶 Add a Baby</div>
+                <input value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doAddBaby()} placeholder="Baby's name" autoFocus style={{width:"100%",padding:"15px",border:`2px solid ${T.bord}`,borderRadius:16,fontSize:16,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:14}}/>
+                <button onClick={doAddBaby} style={{width:"100%",padding:17,background:"linear-gradient(135deg,#FF6B9D,#A78BFA)",border:"none",borderRadius:16,color:"#fff",fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Add Baby</button>
+              </div>
+            </div>
+          )}
+
+          {/* PARTNER MODAL */}
+          {showPartner&&<PartnerModal onClose={()=>setShowPartner(false)} getOrCreateInviteCode={getOrCreateInviteCode} user={user} onLinkPartner={()=>{setShowPartner(false);setShowLinkPartner(true);}}/>}
+
+          {/* LINK TO PARTNER MODAL */}
+          {showLinkPartner&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.6)",display:"flex",alignItems:"flex-end",zIndex:200}} onClick={()=>{setShowLinkPartner(false);setLinkError("");setLinkCode("");}}>
+              <div style={{background:T.bg2,borderRadius:"26px 26px 0 0",padding:"32px 24px 48px",width:"100%",maxWidth:430,margin:"0 auto"}} onClick={e=>e.stopPropagation()}>
+                <div style={{fontSize:36,marginBottom:12,textAlign:"center"}}>🔗</div>
+                <div style={{fontSize:20,fontWeight:900,color:T.text,marginBottom:6,textAlign:"center"}}>Join a Family</div>
+                <div style={{fontSize:13,color:T.text2,marginBottom:28,textAlign:"center",lineHeight:1.6}}>Enter the invite code from the family's app.<br/>Your account will be linked to their family.</div>
+                {linkSuccess?(
+                  <div style={{textAlign:"center",padding:"20px"}}>
+                    <div style={{fontSize:48,marginBottom:12}}>✅</div>
+                    <div style={{fontSize:16,fontWeight:900,color:"#34D399"}}>Linked successfully!</div>
+                    <div style={{fontSize:13,color:T.text2,marginTop:6}}>Reloading app...</div>
+                  </div>
+                ):(
+                  <>
+                    <input autoFocus value={linkCode} onChange={e=>setLinkCode(e.target.value.toUpperCase())} placeholder="e.g. AB12CD" maxLength={6}
+                      style={{width:"100%",padding:"18px",border:`2.5px solid ${linkError?"#FF4D6D":T.bord}`,borderRadius:16,fontSize:24,fontFamily:"monospace",color:T.text,background:T.bg3,marginBottom:10,textAlign:"center",letterSpacing:6,boxSizing:"border-box"}}/>
+                    {linkError&&<div style={{color:"#FF4D6D",fontSize:13,textAlign:"center",marginBottom:12}}>{linkError}</div>}
+                    <div style={{background:"#FFF8E7",border:"1px solid #FBBF2444",borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:12,color:"#92660A",lineHeight:1.6}}>
+                      ⚠️ <strong>Note:</strong> This will move your account to your partner's family. Your current babies and logs will no longer be visible.
+                    </div>
+                    <button onClick={doLinkToFamily} disabled={linkLoading} style={{width:"100%",padding:"16px",background:"linear-gradient(135deg,#A78BFA,#7C5CBF)",border:"none",borderRadius:16,color:"#fff",fontSize:15,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>
+                      {linkLoading?"Linking...":"Join Family →"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SUCKING 15-MIN CHECK */}
+          {suckingCheck&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,padding:24}}>
+              <div style={{background:T.bg2,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:380,textAlign:"center"}}>
+                <div style={{fontSize:48,marginBottom:12}}>🫦</div>
+                <div style={{fontSize:19,fontWeight:900,color:T.text,marginBottom:8}}>Still sucking?</div>
+                <div style={{fontSize:13,color:T.text2,marginBottom:24,lineHeight:1.6}}>
+                  {babies.find(b=>b.id===suckingCheck.babyId)?.name} has been sucking for 15 minutes.<br/>Is this still ongoing?
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>finishSucking(suckingCheck.babyId)} style={{flex:1,padding:"14px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>No, Finish</button>
+                  <button onClick={()=>setSuckingCheck(null)} style={{flex:1,padding:"14px",background:"linear-gradient(135deg,#F59E0B,#FBBF24)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>Yes, Continue</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ALARM */}
+          {alarmFiring&&(
+            <div style={{position:"fixed",inset:0,zIndex:999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(255,30,60,0.97)",animation:"alarmPulse 0.9s ease-in-out infinite"}}>
+              <style>{`@keyframes alarmPulse{0%,100%{background:rgba(255,30,60,0.97)}50%{background:rgba(180,0,30,0.99)}}@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}@keyframes bigBounce{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}`}</style>
+              <div style={{fontSize:80,animation:"bigBounce 0.9s ease-in-out infinite",marginBottom:10}}>🔔</div>
+              <div style={{fontSize:28,fontWeight:900,color:"#fff",textAlign:"center",marginBottom:8,animation:"shake 0.9s ease-in-out infinite"}}>FEEDING TIME!</div>
+              <div style={{fontSize:18,color:"rgba(255,255,255,0.9)",fontWeight:700,marginBottom:6}}>{babies.find(b=>b.id===alarmBabyId)?.name||"Baby"} needs to be fed!</div>
+              <div style={{fontSize:14,color:"rgba(255,255,255,0.7)",marginBottom:50}}>Every {tlabel(timers[alarmBabyId]||{totalMins:0})} timer is up</div>
+              <button onClick={stopAlarm} style={{background:"#fff",border:"none",borderRadius:24,padding:"20px 60px",fontSize:20,fontWeight:900,color:"#FF1E3C",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 8px 32px rgba(0,0,0,0.3)"}}>✓ OKAY, I'M ON IT</button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<ThemeProvider><App/></ThemeProvider>);
+    setTimeout(()=>{const s=document.getElementById("splash");if(s){s.classList.add("hide");setTimeout(()=>s.remove(),400);}},500);
+    // Smart service worker — auto-detects updates and shows a refresh banner
+    if("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").then(reg => {
+          // Check for updates every 30 seconds (more aggressive for home screen)
+          setInterval(() => reg.update(), 30000);
+
+          reg.addEventListener("updatefound", () => {
+            const newWorker = reg.installing;
+            newWorker.addEventListener("statechange", () => {
+              if(newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                // New version available — show banner
+                const banner = document.createElement("div");
+                banner.id = "update-banner";
+                banner.style.cssText = "position:fixed;bottom:100px;left:50%;transform:translateX(-50%);width:calc(100% - 36px);max-width:400px;background:#1a1a2e;border-radius:16px;padding:14px 20px;display:flex;align-items:center;gap:16px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,0.3);animation:slideUp 0.3s ease";
+                banner.innerHTML = `
+                  <span style="font-size:20px">🆕</span>
+                  <span style="color:#fff;font-size:13px;font-weight:600;flex:1">New update available!</span>
+                  <button onclick="navigator.serviceWorker.controller.postMessage('SKIP_WAITING');window.location.reload();"
+                    style="background:#7C5CBF;border:none;border-radius:10px;padding:8px 16px;color:#fff;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0">
+                    Update Now
+                  </button>`;
+                document.body.appendChild(banner);
+              }
+            });
+          });
+        }).catch(() => {});
+
+        // When SW activates (new version took control) — auto reload
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if(!refreshing){ refreshing = true; window.location.reload(); }
+        });
+
+        // Listen for SW_ACTIVATED message — reload immediately on home screen
+        navigator.serviceWorker.addEventListener("message", e => {
+          if(e.data?.type === "SW_ACTIVATED" && !refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
+      });
+    }
+    </script>
+</body>
+</html>

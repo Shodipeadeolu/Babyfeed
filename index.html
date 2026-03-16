@@ -1138,8 +1138,13 @@ const {useState,useEffect,useRef,useCallback}=React;
                         const isPast=dt<=now;
                         return(
                           <button key={t} onClick={()=>onConfirmDose(med,t)}
-                            style={{padding:"7px 14px",background:taken?"#34D399":isPast&&!taken?"#FF4D6D22":T.bg3,border:`2px solid ${taken?"#34D399":isPast&&!taken?"#FF4D6D":T.bord}`,borderRadius:12,color:taken?"#fff":isPast&&!taken?"#FF4D6D":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
-                            {taken?"✓ ":""}{fmt12(t)}
+                            style={{padding:"7px 14px",
+                              background:taken?"#34D399":"#FF4D6D22",
+                              border:`2px solid ${taken?"#34D399":"#FF4D6D"}`,
+                              borderRadius:12,
+                              color:taken?"#fff":"#FF4D6D",
+                              fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+                            {taken?"✓ ":"✕ "}{fmt12(t)}
                           </button>
                         );
                       })}

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="BabyFeed" />
@@ -1137,8 +1137,8 @@ const {useState,useEffect,useRef,useCallback}=React;
                         const dt=new Date(now);dt.setHours(h,m2,0,0);
                         const isPast=dt<=now;
                         return(
-                          <button key={t} onClick={()=>!taken&&onConfirmDose(med,t)}
-                            style={{padding:"7px 14px",background:taken?"#34D39922":isPast&&!taken?"#FF4D6D22":T.bg3,border:`2px solid ${taken?"#34D399":isPast&&!taken?"#FF4D6D":T.bord}`,borderRadius:12,color:taken?"#34D399":isPast&&!taken?"#FF4D6D":T.text2,fontSize:12,fontWeight:700,cursor:taken?"default":"pointer",fontFamily:"inherit"}}>
+                          <button key={t} onClick={()=>onConfirmDose(med,t)}
+                            style={{padding:"7px 14px",background:taken?"#34D399":isPast&&!taken?"#FF4D6D22":T.bg3,border:`2px solid ${taken?"#34D399":isPast&&!taken?"#FF4D6D":T.bord}`,borderRadius:12,color:taken?"#fff":isPast&&!taken?"#FF4D6D":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
                             {taken?"✓ ":""}{fmt12(t)}
                           </button>
                         );
@@ -1352,7 +1352,13 @@ const {useState,useEffect,useRef,useCallback}=React;
       function sendPushNotif(title,body){if(Notification&&Notification.permission==="granted"){try{new Notification(title,{body,icon:"/icons/icon-192.png"});}catch(e){}}}
       async function handleAddMed(m){if("Notification" in window&&Notification.permission==="default")await Notification.requestPermission();await addMed(m);}
       async function handleDeleteMed(id){await deleteMed(id);}
-      async function handleConfirmDose(med,timeStr){const key=new Date().toDateString()+"|"+timeStr;await updateMed(med.id,{takenDoses:{...(med.takenDoses||{}),[key]:new Date().toISOString()}});setMedAlertFiring(null);}
+      async function handleConfirmDose(med,timeStr){
+        const key=new Date().toDateString()+"|"+timeStr;
+        const taken={...(med.takenDoses||{})};
+        if(taken[key]){delete taken[key];}else{taken[key]=new Date().toISOString();}
+        await updateMed(med.id,{takenDoses:taken});
+        setMedAlertFiring(null);
+      }
       async function handleTogglePause(med){await updateMed(med.id,{paused:!med.paused});}
 
       useEffect(()=>auth.onAuthStateChanged(u=>setUser(u||null)),[]);

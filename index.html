@@ -415,6 +415,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [ready,setReady]=useState(false);
       const [familyId,setFamilyId]=useState(null);
       const [activities,setActivities]=useState([]);
+      const [meds,setMeds]=useState([]);
 
       useEffect(()=>{
         if(!uid)return;
@@ -463,6 +464,9 @@ const {useState,useEffect,useRef,useCallback}=React;
         uns.push(db.collection(`families/${familyId}/timers`).onSnapshot(snap=>{
           const t={};snap.docs.forEach(d=>{t[d.id]=d.data();});setTimers(t);
         }));
+        uns.push(db.collection(`families/${familyId}/meds`).onSnapshot(snap=>{
+          setMeds(snap.docs.map(d=>({...d.data(),id:d.id})));
+        }));
         uns.push(db.collection(`families/${familyId}/activities`).orderBy("startTime","desc").limit(200).onSnapshot(snap=>{
           setActivities(snap.docs.map(d=>({...d.data(),id:d.id})));
         },()=>{}));
@@ -496,7 +500,10 @@ const {useState,useEffect,useRef,useCallback}=React;
       const deleteActivity=async id=>db.collection(`families/${fref()}/activities`).doc(id).delete();
       const updateActivity=async(id,data)=>db.collection(`families/${fref()}/activities`).doc(id).set(data);
 
-      return{babies,logs,activities,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity};
+      const addMed=async m=>db.collection(`families/${fref()}/meds`).add(m);
+      const deleteMed=async id=>db.collection(`families/${fref()}/meds`).doc(id).delete();
+      const updateMed=async(id,data)=>db.collection(`families/${fref()}/meds`).doc(id).set(data,{merge:true});
+      return{babies,logs,activities,meds,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity,addMed,deleteMed,updateMed};
     }
 
     // ── INSIGHTS ENGINE ───────────────────────────────────────
@@ -789,9 +796,12 @@ const {useState,useEffect,useRef,useCallback}=React;
       const filtered=activityFilter==="all"?activities:activities.filter(a=>a.babyId===activityFilter);
 
       function fmtDurSecs(secs){
-        if(!secs)return"—";
+        if(!secs&&secs!==0)return"—";
         const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60;
-        if(h>0)return`${h}h ${m}m`;if(m>0)return`${m}m ${s}s`;return`${s}s`;
+        const ss=String(s).padStart(2,"0");
+        if(h>0)return`${h}h ${m}m ${ss}s`;
+        if(m>0)return`${m}m ${ss}s`;
+        return`${s}s`;
       }
 
       function actIcon(a){return a.type==="sleep"?"😴":a.type==="sucking"?"🫦":a.diaperType==="wet"?"💧":a.diaperType==="dirty"?"💩":"🔀";}
@@ -1007,6 +1017,253 @@ const {useState,useEffect,useRef,useCallback}=React;
       );
     }
 
+
+    // ── MEDS VIEW ─────────────────────────────────────────────
+    function MedsView({babies,meds,onAddMed,onDeleteMed,onConfirmDose,onTogglePause,nowMs}){
+      const T=useT();
+      const [subView,setSubView]=useState("schedule");
+      const [showAdd,setShowAdd]=useState(false);
+      const [medName,setMedName]=useState("");
+      const [medBabyId,setMedBabyId]=useState(babies[0]?.id||"");
+      const [medFreq,setMedFreq]=useState(1);
+      const [medTimes,setMedTimes]=useState(["08:00"]);
+      const [medDurationType,setMedDurationType]=useState("fixed");
+      const [medDays,setMedDays]=useState(7);
+      const [medNote,setMedNote]=useState("");
+      const [saving,setSaving]=useState(false);
+
+      function fmt12(t){
+        if(!t)return"";
+        const [h,m]=t.split(":").map(Number);
+        const ap=h>=12?"PM":"AM";
+        const h12=h===0?12:h>12?h-12:h;
+        return`${h12}:${String(m).padStart(2,"0")} ${ap}`;
+      }
+      function updateFreq(n){
+        setMedFreq(n);
+        if(n===1)setMedTimes(["08:00"]);
+        else if(n===2)setMedTimes(["08:00","20:00"]);
+        else if(n===3)setMedTimes(["08:00","14:00","20:00"]);
+        else setMedTimes(["07:00","11:00","15:00","21:00"]);
+      }
+      async function saveMed(){
+        if(!medName.trim())return;
+        setSaving(true);
+        const endDate=medDurationType==="fixed"?new Date(Date.now()+medDays*86400000).toISOString():null;
+        await onAddMed({name:medName.trim(),babyId:medBabyId,freq:medFreq,times:medTimes,
+          durationType:medDurationType,days:medDurationType==="fixed"?medDays:null,
+          startDate:new Date().toISOString(),endDate,note:medNote.trim(),paused:false,
+          createdAt:new Date().toISOString()});
+        setMedName("");setMedNote("");setMedFreq(1);setMedTimes(["08:00"]);
+        setMedDurationType("fixed");setMedDays(7);setSaving(false);setShowAdd(false);
+      }
+      const now=new Date(nowMs);
+      const todayStr=now.toDateString();
+      function getNextDose(med){
+        if(med.paused)return null;
+        if(med.endDate&&new Date(med.endDate)<now)return null;
+        const todayDoses=med.times.map(t=>{const[h,m]=t.split(":").map(Number);const d=new Date(now);d.setHours(h,m,0,0);return d;});
+        const future=todayDoses.filter(d=>d>now);
+        if(future.length>0)return future[0];
+        return todayDoses.map(d=>{const n=new Date(d);n.setDate(n.getDate()+1);return n;})[0];
+      }
+      function minsUntil(d){return d?Math.round((d-now)/60000):null;}
+      function fmtCd(mins){if(mins===null)return"";if(mins<=0)return"NOW";if(mins<60)return`${mins}m`;const h=Math.floor(mins/60),m=mins%60;return m>0?`${h}h ${m}m`:`${h}h`;}
+      function progressPct(med){if(!med.endDate)return null;const total=new Date(med.endDate)-new Date(med.startDate);return Math.min(100,Math.max(0,Math.round((now-new Date(med.startDate))/total*100)));}
+      function isDoseTaken(med,t){return med.takenDoses&&med.takenDoses[todayStr+"|"+t];}
+      const activeMeds=meds.filter(m=>!m.endDate||new Date(m.endDate)>now);
+      const completedMeds=meds.filter(m=>m.endDate&&new Date(m.endDate)<=now);
+      const dueSoon=activeMeds.filter(m=>{const mins=minsUntil(getNextDose(m));return mins!==null&&mins<=30&&mins>=0;});
+
+      return(
+        <div>
+          <div style={{display:"flex",gap:8,marginBottom:18}}>
+            {[["schedule","💊 Schedule"],["dashboard","📊 Dashboard"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setSubView(v)} style={{flex:1,padding:"10px",background:subView===v?"#7C5CBF":T.bg2,border:"none",borderRadius:14,color:subView===v?"#fff":T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+            ))}
+          </div>
+          {dueSoon.length>0&&subView==="schedule"&&(
+            <div style={{background:"linear-gradient(135deg,#FF6B9D22,#7C5CBF22)",border:"2px solid #FF6B9D44",borderRadius:16,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:20}}>{"🔔"}</span>
+              <div>
+                <div style={{fontSize:12,fontWeight:800,color:"#FF6B9D",textTransform:"uppercase",letterSpacing:.8}}>{"Due Soon"}</div>
+                <div style={{fontSize:13,color:T.text,fontWeight:600}}>{dueSoon.map(m=>{const b=babies.find(x=>x.id===m.babyId);return`${m.name} (${b?.name||"?"}) — ${fmtCd(minsUntil(getNextDose(m)))}`}).join(" • ")}</div>
+              </div>
+            </div>
+          )}
+          {subView==="schedule"&&(
+            <div>
+              {activeMeds.length===0&&!showAdd&&(
+                <div style={{textAlign:"center",padding:"50px 0",color:T.text3}}>
+                  <div style={{fontSize:40,marginBottom:12}}>{"💊"}</div>
+                  <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>{"No medications yet"}</div>
+                  <div style={{fontSize:13}}>{"Tap + Add Medication to get started"}</div>
+                </div>
+              )}
+              {activeMeds.map(med=>{
+                const b=babies.find(x=>x.id===med.babyId);
+                const next=getNextDose(med);const mins=minsUntil(next);
+                const overdue=mins!==null&&mins<0;const soon=mins!==null&&mins<=30&&mins>=0;
+                const pct=progressPct(med);
+                const daysLeft=med.endDate?Math.ceil((new Date(med.endDate)-now)/86400000):null;
+                return(
+                  <div key={med.id} style={{background:T.bg2,borderRadius:20,padding:"16px 18px",marginBottom:12,border:`2px solid ${overdue?"#FF4D6D44":soon?"#F59E0B44":T.bord}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                          <span style={{fontSize:16}}>{"💊"}</span>
+                          <span style={{fontSize:16,fontWeight:900,color:T.text}}>{med.name}</span>
+                          {med.paused&&<span style={{fontSize:10,background:"#F59E0B22",color:"#F59E0B",fontWeight:700,padding:"2px 8px",borderRadius:8}}>{"PAUSED"}</span>}
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div style={{width:20,height:20,borderRadius:"50%",background:(b?.color||"#999")+"22",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <span style={{fontSize:10,fontWeight:900,color:b?.color}}>{b?.name?.[0]||"?"}</span>
+                          </div>
+                          <span style={{fontSize:12,color:T.text2,fontWeight:600}}>{b?.name||"Unknown"}</span>
+                          <span style={{fontSize:11,color:T.text3}}>{"•"}</span>
+                          <span style={{fontSize:12,color:T.text3}}>{med.freq}{"x daily"}</span>
+                          {med.durationType==="ongoing"&&<span style={{fontSize:11,background:"#7C5CBF22",color:"#7C5CBF",fontWeight:700,padding:"2px 7px",borderRadius:8}}>{"Ongoing"}</span>}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>onTogglePause(med)} style={{padding:"6px 10px",background:med.paused?"#34D39922":"#F59E0B22",border:"none",borderRadius:10,color:med.paused?"#34D399":"#F59E0B",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{med.paused?"▶":"⏸"}</button>
+                        <button onClick={()=>onDeleteMed(med.id)} style={{padding:"6px 10px",background:"#FF4D6D11",border:"none",borderRadius:10,color:"#FF4D6D",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{"✕"}</button>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+                      {med.times.map(t=>{
+                        const taken=isDoseTaken(med,t);
+                        const[h,m2]=t.split(":").map(Number);
+                        const dt=new Date(now);dt.setHours(h,m2,0,0);
+                        const isPast=dt<=now;
+                        return(
+                          <button key={t} onClick={()=>!taken&&onConfirmDose(med,t)}
+                            style={{padding:"7px 14px",background:taken?"#34D39922":isPast&&!taken?"#FF4D6D22":T.bg3,border:`2px solid ${taken?"#34D399":isPast&&!taken?"#FF4D6D":T.bord}`,borderRadius:12,color:taken?"#34D399":isPast&&!taken?"#FF4D6D":T.text2,fontSize:12,fontWeight:700,cursor:taken?"default":"pointer",fontFamily:"inherit"}}>
+                            {taken?"✓ ":""}{fmt12(t)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:pct!==null?8:0}}>
+                      <div style={{fontSize:12,color:overdue?"#FF4D6D":soon?"#F59E0B":T.text3,fontWeight:600}}>
+                        {med.paused?"Paused":!next?"Course complete":("Next: "+fmt12((next.toTimeString().slice(0,5)))+" ("+fmtCd(mins)+")")}
+                      </div>
+                      {daysLeft!==null&&<span style={{fontSize:11,color:T.text3,fontWeight:600}}>{daysLeft>0?daysLeft+" day"+(daysLeft!==1?"s":"")+" left":"Last day"}</span>}
+                    </div>
+                    {pct!==null&&(<div style={{background:T.bg3,borderRadius:6,height:5,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:pct>80?"#34D399":"#7C5CBF",borderRadius:6,transition:"width 0.4s"}}/></div>)}
+                    {med.note&&<div style={{fontSize:11,color:T.text3,marginTop:8,fontStyle:"italic"}}>{med.note}</div>}
+                  </div>
+                );
+              })}
+              {showAdd?(
+                <div style={{background:T.bg2,borderRadius:20,padding:"18px",border:`2px solid #7C5CBF44`,marginBottom:12}}>
+                  <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:14}}>{"+ New Medication"}</div>
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Medication Name"}</div>
+                  <input value={medName} onChange={e=>setMedName(e.target.value)} placeholder="e.g. Amoxicillin"
+                    style={{width:"100%",padding:"11px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:12}}/>
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Baby"}</div>
+                  <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    {babies.map(b=>(
+                      <button key={b.id} onClick={()=>setMedBabyId(b.id)} style={{flex:1,padding:"10px",background:medBabyId===b.id?b.color:T.bg3,border:`2px solid ${medBabyId===b.id?b.color:T.bord}`,borderRadius:12,color:medBabyId===b.id?"#fff":T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{b.name}</button>
+                    ))}
+                  </div>
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Frequency"}</div>
+                  <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    {[1,2,3,4].map(n=>(
+                      <button key={n} onClick={()=>updateFreq(n)} style={{flex:1,padding:"10px",background:medFreq===n?"#7C5CBF":T.bg3,border:`2px solid ${medFreq===n?"#7C5CBF":T.bord}`,borderRadius:12,color:medFreq===n?"#fff":T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{n}{"x"}</button>
+                    ))}
+                  </div>
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Times"}</div>
+                  <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                    {medTimes.map((t,i)=>(
+                      <input key={i} type="time" value={t} onChange={e=>{const a=[...medTimes];a[i]=e.target.value;setMedTimes(a);}}
+                        style={{padding:"9px 12px",border:`2px solid ${T.bord}`,borderRadius:10,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3}}/>
+                    ))}
+                  </div>
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Duration"}</div>
+                  <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    {[["fixed","Fixed Course"],["ongoing","Ongoing"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setMedDurationType(v)} style={{flex:1,padding:"10px",background:medDurationType===v?"#7C5CBF":T.bg3,border:`2px solid ${medDurationType===v?"#7C5CBF":T.bord}`,borderRadius:12,color:medDurationType===v?"#fff":T.text2,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+                    ))}
+                  </div>
+                  {medDurationType==="fixed"&&(
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                      <span style={{fontSize:13,color:T.text2,fontWeight:600}}>{"Days:"}</span>
+                      <button onClick={()=>setMedDays(d=>Math.max(1,d-1))} style={{width:36,height:36,borderRadius:10,background:T.bg3,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>{"−"}</button>
+                      <span style={{fontSize:18,fontWeight:900,color:T.text,minWidth:30,textAlign:"center"}}>{medDays}</span>
+                      <button onClick={()=>setMedDays(d=>d+1)} style={{width:36,height:36,borderRadius:10,background:T.bg3,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>{"+"}</button>
+                      <span style={{fontSize:13,color:T.text3}}>{medDays===1?"day":"days"}</span>
+                    </div>
+                  )}
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Notes (optional)"}</div>
+                  <input value={medNote} onChange={e=>setMedNote(e.target.value)} placeholder="e.g. with food"
+                    style={{width:"100%",padding:"11px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:14}}/>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>setShowAdd(false)} style={{flex:1,padding:"12px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{"Cancel"}</button>
+                    <button onClick={saveMed} disabled={saving||!medName.trim()} style={{flex:2,padding:"12px",background:saving||!medName.trim()?"#ccc":"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:saving||!medName.trim()?"default":"pointer",fontFamily:"inherit"}}>{saving?"Saving...":"Save Medication"}</button>
+                  </div>
+                </div>
+              ):(
+                <button onClick={()=>setShowAdd(true)} style={{width:"100%",padding:"14px",background:T.bg2,border:`2px dashed ${T.bord}`,borderRadius:18,color:"#7C5CBF",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>{"+ Add Medication"}</button>
+              )}
+            </div>
+          )}
+          {subView==="dashboard"&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:800,color:T.text3,textTransform:"uppercase",letterSpacing:.8,marginBottom:10}}>{"Active"}</div>
+              {activeMeds.length===0&&<div style={{textAlign:"center",padding:"30px 0",color:T.text3,fontSize:13}}>{"No active medications"}</div>}
+              {activeMeds.map(med=>{
+                const b=babies.find(x=>x.id===med.babyId);
+                const pct=progressPct(med);
+                const daysLeft=med.endDate?Math.ceil((new Date(med.endDate)-now)/86400000):null;
+                const takenToday=med.takenDoses?med.times.filter(t=>isDoseTaken(med,t)).length:0;
+                const totalDosesEver=med.takenDoses?Object.keys(med.takenDoses).length:0;
+                const daysSinceStart=Math.max(1,Math.ceil((now-new Date(med.startDate))/86400000));
+                const compliance=Math.min(100,Math.round(totalDosesEver/(daysSinceStart*med.freq)*100));
+                return(
+                  <div key={med.id} style={{background:T.bg2,borderRadius:18,padding:"14px 16px",marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div><span style={{fontSize:15,fontWeight:900,color:T.text}}>{med.name}</span><span style={{fontSize:11,color:T.text3,marginLeft:8}}>{b?.name}</span></div>
+                      <span style={{fontSize:12,fontWeight:700,color:"#7C5CBF"}}>{takenToday}{"/"}{med.times.length}{" today"}</span>
+                    </div>
+                    {pct!==null&&(<>
+                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                        <span style={{fontSize:11,color:T.text3}}>{"Course progress"}</span>
+                        <span style={{fontSize:11,color:T.text3,fontWeight:700}}>{pct}{"% • "}{daysLeft!==null&&daysLeft>0?daysLeft+" days left":"last day"}</span>
+                      </div>
+                      <div style={{background:T.bg3,borderRadius:6,height:6,overflow:"hidden",marginBottom:8}}><div style={{height:"100%",width:pct+"%",background:pct>80?"#34D399":"#7C5CBF",borderRadius:6,transition:"width 0.4s"}}/></div>
+                    </>)}
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:11,color:T.text3}}>{"Compliance:"}</span>
+                      <div style={{flex:1,background:T.bg3,borderRadius:4,height:4,overflow:"hidden"}}><div style={{height:"100%",width:compliance+"%",background:compliance>80?"#34D399":compliance>50?"#F59E0B":"#FF4D6D",borderRadius:4}}/></div>
+                      <span style={{fontSize:11,fontWeight:700,color:compliance>80?"#34D399":compliance>50?"#F59E0B":"#FF4D6D"}}>{compliance}{"%"}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {completedMeds.length>0&&(<>
+                <div style={{fontSize:13,fontWeight:800,color:T.text3,textTransform:"uppercase",letterSpacing:.8,marginBottom:10,marginTop:18}}>{"Completed"}</div>
+                {completedMeds.map(med=>{
+                  const b=babies.find(x=>x.id===med.babyId);
+                  const totalDoses=med.takenDoses?Object.keys(med.takenDoses).length:0;
+                  return(
+                    <div key={med.id} style={{background:T.bg2,borderRadius:18,padding:"14px 16px",marginBottom:10,opacity:.7}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div><span style={{fontSize:14,fontWeight:800,color:T.text}}>{med.name}</span><span style={{fontSize:11,color:T.text3,marginLeft:8}}>{b?.name}</span></div>
+                        <span style={{fontSize:11,background:"#34D39922",color:"#34D399",fontWeight:700,padding:"3px 10px",borderRadius:8}}>{"Complete"}</span>
+                      </div>
+                      <div style={{fontSize:11,color:T.text3,marginTop:6}}>{new Date(med.startDate).toLocaleDateString()}{" – "}{new Date(med.endDate).toLocaleDateString()}{med.days&&(" • "+totalDoses+"/"+med.days*med.freq+" doses taken")}</div>
+                      <button onClick={()=>onDeleteMed(med.id)} style={{marginTop:8,padding:"5px 12px",background:"#FF4D6D11",border:"none",borderRadius:8,color:"#FF4D6D",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{"Remove"}</button>
+                    </div>
+                  );
+                })}
+              </>)}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     // ── MAIN APP ──────────────────────────────────────────────
     function App(){
       const {dark,toggle:toggleTheme}=useTheme();
@@ -1014,7 +1271,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const T=useT();
       const [user,setUser]=useState(undefined);
       const [unit,setUnit]=useState(()=>localStorage.getItem('bf_unit')||'ml');
-      const {babies,logs,activities,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity}=useFirestore(user?.uid);
+      const {babies,logs,activities,meds,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity,addMed,deleteMed,updateMed}=useFirestore(user?.uid);
 
       const [activeBabyId,setActiveBabyId]=useState(null);
       const [amount,setAmount]=useState(60);
@@ -1022,7 +1279,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [view,setView]=useState("log");
       const [viewAnim,setViewAnim]=useState(false);
       function switchView(v){setViewAnim(true);setTimeout(()=>{setView(v);setViewAnim(false);},80);}
-      const VIEWS=["log","dashboard","history","insights"];
+      const VIEWS=["log","dashboard","history","insights","meds"];
       const swipeStart=React.useRef(null);
       function onTouchStart(e){swipeStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};}
       function onTouchEnd(e){
@@ -1076,7 +1333,8 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [editActDiaper,setEditActDiaper]=useState("");
       const [confirmDelActHistory,setConfirmDelActHistory]=useState(null);
       const [confirmDeleteLog,setConfirmDeleteLog]=useState(null);
-      const [miniOpen,setMiniOpen]=useState({}); // {babyId: bool}
+      const [miniOpen,setMiniOpen]=useState({});
+      const [isOnline,setIsOnline]=useState(navigator.onLine); // {babyId: bool}
       // ── Activity tab state ──
       const [suckingActive,setSuckingActive]=useState({}); // {babyId: {startMs, babyId}}
       const [sleepActive,setSleepActive]=useState({});     // {babyId: {startMs, babyId}}
@@ -1089,11 +1347,65 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [expandedInsight,setExpandedInsight]=useState(null);
       const alarmDone=useRef({});
       const editRef=useRef(null);
+      const [medAlertFiring,setMedAlertFiring]=useState(null);
+      function sendPushNotif(title,body){if(Notification&&Notification.permission==="granted"){try{new Notification(title,{body,icon:"/icons/icon-192.png"});}catch(e){}}}
+      async function handleAddMed(m){if("Notification" in window&&Notification.permission==="default")await Notification.requestPermission();await addMed(m);}
+      async function handleDeleteMed(id){await deleteMed(id);}
+      async function handleConfirmDose(med,timeStr){const key=new Date().toDateString()+"|"+timeStr;await updateMed(med.id,{takenDoses:{...(med.takenDoses||{}),[key]:new Date().toISOString()}});setMedAlertFiring(null);}
+      async function handleTogglePause(med){await updateMed(med.id,{paused:!med.paused});}
 
       useEffect(()=>auth.onAuthStateChanged(u=>setUser(u||null)),[]);
-      useEffect(()=>{if(babies.length>0&&!activeBabyId)setActiveBabyId(babies[0].id);},[babies]);
       useEffect(()=>{
-        function tick(){const n=Date.now();setNowMs(n);const d=new Date(n);setNowStr(d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+" · "+d.toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"}));}
+        const on=()=>setIsOnline(true);
+        const off=()=>setIsOnline(false);
+        window.addEventListener("online",on);
+        window.addEventListener("offline",off);
+        return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+      },[]);
+      useEffect(()=>{if(babies.length>0&&!activeBabyId)setActiveBabyId(babies[0].id);},[babies]);
+      useEffect(()=>{window.__medsRef=meds;},[meds]);
+      useEffect(()=>{window.__logsRef=logs;},[logs]);
+      useEffect(()=>{window.__dismissedHungryRef=dismissedHungry;},[dismissedHungry]);
+      useEffect(()=>{window.__babiesRef=babies;},[babies]);
+      useEffect(()=>{
+        function tick(){
+          const n=Date.now();setNowMs(n);
+          const d=new Date(n);
+          setNowStr(d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+" · "+d.toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"}));
+          if(window.__medsRef){
+            window.__medsRef.forEach(med=>{
+              if(med.paused)return;
+              if(med.endDate&&new Date(med.endDate)<new Date(n))return;
+              med.times.forEach(t=>{
+                const[h,m2]=t.split(":").map(Number);
+                const due=new Date(n);due.setHours(h,m2,0,0);
+                if(Math.abs(n-due.getTime())<60000){
+                  const key="mf_"+med.id+"_"+d.toDateString()+"_"+t;
+                  if(sessionStorage.getItem(key))return;
+                  sessionStorage.setItem(key,"1");
+                  const tk=d.toDateString()+"|"+t;
+                  if(med.takenDoses&&med.takenDoses[tk])return;
+                  const bName=(window.__babiesRef||[]).find(b=>b.id===med.babyId)?.name||"";
+                  setMedAlertFiring({med,timeStr:t,babyName:bName});
+                  sendPushNotif("Medication Reminder",med.name+(bName?" for "+bName:"")+" is due now");
+                  try{const ac=new AudioContext();[0,200,400].forEach(delay=>{setTimeout(()=>{const o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=660;g.gain.setValueAtTime(0.3,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.3);o.start();o.stop(ac.currentTime+0.3);},delay);});}catch(e){}
+                }
+              });
+            });
+          }
+          // Hunger alert check
+          if(window.__babiesRef&&window.__logsRef){
+            const urgent=computeInsights(window.__babiesRef,window.__logsRef,window.__dismissedHungryRef||{},{}).filter(i=>i.urgent&&i.type==="hunger");
+            urgent.forEach(ins=>{
+              const key="hf_"+ins.babyId+"_"+new Date(n).toDateString()+"_"+Math.floor(n/1800000);
+              if(sessionStorage.getItem(key))return;
+              sessionStorage.setItem(key,"1");
+              const b=(window.__babiesRef||[]).find(x=>x.id===ins.babyId);
+              setHungryPopup({babyId:ins.babyId,babyName:b?.name||"Baby",message:ins.sub||"may be hungry"});
+              try{const ac=new AudioContext();[0,300,600].forEach((delay,i)=>{setTimeout(()=>{const o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=i===0?523:i===1?659:784;g.gain.setValueAtTime(0.25,ac.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.35);o.start();o.stop(ac.currentTime+0.35);},delay);});}catch(e){}
+            });
+          }
+        }
         tick();const t=setInterval(tick,1000);return()=>clearInterval(t);
       },[]);
       useEffect(()=>{
@@ -1262,10 +1574,11 @@ const {useState,useEffect,useRef,useCallback}=React;
 
       // FORMAT DURATION
       function fmtDur(secs){
-        if(!secs)return"—";
+        if(!secs&&secs!==0)return"—";
         const h=Math.floor(secs/3600),m=Math.floor((secs%3600)/60),s=secs%60;
-        if(h>0)return`${h}h ${m}m`;
-        if(m>0)return`${m}m ${s}s`;
+        const ss=String(s).padStart(2,"0");
+        if(h>0)return`${h}h ${m}m ${ss}s`;
+        if(m>0)return`${m}m ${ss}s`;
         return`${s}s`;
       }
 
@@ -1296,7 +1609,12 @@ const {useState,useEffect,useRef,useCallback}=React;
           {/* HEADER */}
           <div style={{background:T.bg2,borderBottom:`1px solid ${T.bord}`,padding:"14px 18px 12px",position:"sticky",top:0,zIndex:20}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <span style={{fontSize:18,fontWeight:900,color:T.text}}>🍼 BabyFeed</span>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:18,fontWeight:900,color:T.text}}>{"🍼 BabyFeed"}</span>
+                {!isOnline&&(
+                  <span style={{fontSize:10,fontWeight:700,background:"#F59E0B22",color:"#F59E0B",padding:"3px 8px",borderRadius:8,letterSpacing:.5}}>{"OFFLINE"}</span>
+                )}
+              </div>
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
                 <button onClick={()=>setView(v=>v==="insights"?"log":"insights")} style={{position:"relative",background:view==="insights"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="insights"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
                   {view==="insights"?"← Log":"💡"}
@@ -1305,6 +1623,7 @@ const {useState,useEffect,useRef,useCallback}=React;
                 <button onClick={()=>switchView("dashboard")} style={{background:view==="dashboard"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="dashboard"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="dashboard"?"← Log":"📊"}</button>
                 <button onClick={()=>switchView("insights")} style={{background:view==="insights"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="insights"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="insights"?"← Log":"💡"}</button>
                 <button onClick={()=>switchView("history")} style={{background:view==="history"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="history"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="history"?"← Log":"📋"}</button>
+                <button onClick={()=>switchView("meds")} style={{background:view==="meds"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="meds"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{"💊"}</button>
                 <button onClick={toggleTheme} title="Toggle dark mode" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{dark?"☀️":"🌙"}</button>
                 <button onClick={()=>setShowPartner(true)} title="Invite care team" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🤝</button>
                 <button onClick={()=>auth.signOut()} title="Sign out" style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:900}}>
@@ -1475,6 +1794,7 @@ const {useState,useEffect,useRef,useCallback}=React;
               onDismissIntake={dismissIntake}
 />}
             {view==="dashboard"&&<DashboardView babies={babies} logs={logs}/>}
+            {view==="meds"&&<MedsView babies={babies} meds={meds} onAddMed={handleAddMed} onDeleteMed={handleDeleteMed} onConfirmDose={handleConfirmDose} onTogglePause={handleTogglePause} nowMs={nowMs}/>}
 
             {view==="history"&&(
               <div>
@@ -1509,9 +1829,16 @@ const {useState,useEffect,useRef,useCallback}=React;
                   if(sortedEntries.length===0)return<div style={{textAlign:"center",color:T.text3,padding:"50px 0",fontSize:15}}>Nothing here yet 🍼</div>;
                   return sortedEntries.map(([date,items])=>{
                     const daySummary=babies.map(b=>{
+                      if(historyFilter!=="all"&&b.id!==historyFilter)return null;
                       const bFeeds=items.filter(i=>i._type==="feed"&&i.babyId===b.id);
-                      return{b,count:bFeeds.length,total:bFeeds.reduce((s,i)=>s+i.amount,0)};
-                    }).filter(x=>(historyFilter==="all"||x.b.id===historyFilter)&&x.count>0);
+                      const bSleep=items.filter(i=>i._type==="activity"&&i.babyId===b.id&&i.type==="sleep");
+                      const bDiaper=items.filter(i=>i._type==="activity"&&i.babyId===b.id&&i.type==="diaper");
+                      const sleepSecs=bSleep.reduce((s,i)=>s+(i.durationSecs||0),0);
+                      const wet=bDiaper.filter(i=>i.diaperType==="wet").length;
+                      const dirty=bDiaper.filter(i=>i.diaperType==="dirty").length;
+                      const mixed=bDiaper.filter(i=>i.diaperType==="mixed").length;
+                      return{b,feedCount:bFeeds.length,feedTotal:bFeeds.reduce((s,i)=>s+i.amount,0),sleepSecs,wet,dirty,mixed};
+                    }).filter(Boolean);
                     return(
                       <div key={date} style={{marginBottom:22}}>
                         <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1.5,marginBottom:10}}>{date}</div>
@@ -1596,13 +1923,35 @@ const {useState,useEffect,useRef,useCallback}=React;
                             );
                           }
                         })}
-                        {(historyTypeFilter==="all"||historyTypeFilter==="feeds")&&daySummary.length>0&&(
-                          <div style={{background:T.bg3,borderRadius:12,padding:"10px 14px",marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
-                            {daySummary.map(({b,count,total})=>(
-                              <span key={b.id} style={{fontSize:12,fontWeight:700,color:b.color}}>{b.name}: {count}{" feed"}{count!==1?"s":""}{" · "}{total}{"ml"}</span>
-                            ))}
-                          </div>
-                        )}
+                        {daySummary.length>0&&(()=>{
+                          const rows=daySummary.map(({b,feedCount,feedTotal,sleepSecs,wet,dirty,mixed})=>{
+                            const parts=[];
+                            if((historyTypeFilter==="all"||historyTypeFilter==="feeds")&&feedCount>0)
+                              parts.push(`${feedCount} feed${feedCount!==1?"s":""} · ${feedTotal}ml`);
+                            if((historyTypeFilter==="all"||historyTypeFilter==="sleep")&&sleepSecs>0){
+                              const sh=Math.floor(sleepSecs/3600),sm2=Math.floor((sleepSecs%3600)/60);
+                              parts.push("sleep "+(sh>0?sh+"h ":"")+sm2+"m");
+                            }
+                            if((historyTypeFilter==="all"||historyTypeFilter==="diaper")&&(wet+dirty+mixed)>0){
+                              const dp=[];
+                              if(wet>0)dp.push(wet+" wet");
+                              if(dirty>0)dp.push(dirty+" dirty");
+                              if(mixed>0)dp.push(mixed+" mixed");
+                              parts.push("diapers: "+dp.join(", "));
+                            }
+                            return parts.length>0?{b,parts}:null;
+                          }).filter(Boolean);
+                          if(rows.length===0)return null;
+                          return(
+                            <div style={{background:T.bg3,borderRadius:12,padding:"10px 14px",marginTop:4,display:"flex",flexDirection:"column",gap:5}}>
+                              {rows.map(({b,parts})=>(
+                                <div key={b.id} style={{fontSize:12,fontWeight:700,color:b.color}}>
+                                  {b.name}{": "}{parts.join(" · ")}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   });
@@ -1654,6 +2003,39 @@ const {useState,useEffect,useRef,useCallback}=React;
               );
             })}
           </div>
+
+
+
+          {hungryPopup&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.82)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:499,padding:24}}>
+              <div style={{background:T.bg2,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:380,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+                <div style={{fontSize:48,marginBottom:8}}>{"🍼"}</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#FF6B9D",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{"Hunger Alert"}</div>
+                <div style={{fontSize:22,fontWeight:900,color:T.text,marginBottom:6}}>{hungryPopup.babyName}{" is hungry!"}</div>
+                <div style={{fontSize:14,color:T.text2,marginBottom:24}}>{hungryPopup.message}</div>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>{setDismissedHungry(d=>({...d,[hungryPopup.babyId]:Date.now()}));setHungryPopup(null);}} style={{flex:1,padding:"13px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{"Snooze 30m"}</button>
+                  <button onClick={()=>{swBaby(hungryPopup.babyId);switchView("log");setHungryPopup(null);}} style={{flex:2,padding:"13px",background:"linear-gradient(135deg,#FF6B9D,#7C5CBF)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>{"🍼 Log Feed Now"}</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {medAlertFiring&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.82)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,padding:24}}>
+              <div style={{background:T.bg2,borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:380,textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+                <div style={{fontSize:48,marginBottom:8}}>{"💊"}</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#FF6B9D",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{"Medication Time"}</div>
+                <div style={{fontSize:22,fontWeight:900,color:T.text,marginBottom:4}}>{medAlertFiring.med.name}</div>
+                <div style={{fontSize:15,color:T.text2,marginBottom:6}}>{"for "}{medAlertFiring.babyName}</div>
+                <div style={{fontSize:13,color:T.text3,marginBottom:24}}>{medAlertFiring.med.note||"Time to take this medication"}</div>
+                <div style={{display:"flex",gap:10}}>
+                  <button onClick={()=>setMedAlertFiring(null)} style={{flex:1,padding:"13px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{"Snooze"}</button>
+                  <button onClick={()=>handleConfirmDose(medAlertFiring.med,medAlertFiring.timeStr)} style={{flex:2,padding:"13px",background:"linear-gradient(135deg,#34D399,#10B981)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:900,cursor:"pointer",fontFamily:"inherit"}}>{"✓ Taken!"}</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* UNDO TOAST */}
           {/* CONFIRM DELETE LOG */}

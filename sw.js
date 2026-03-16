@@ -1,63 +1,66 @@
-const CACHE = "babyfeed-v6";
-const ASSETS = ["./index.html", "./manifest.json"];
+const CACHE = 'babyfeed-v9';
+const ASSETS = ['/', '/index.html', '/manifest.json'];
 
-// Install — cache core files and skip waiting immediately
-self.addEventListener("install", e => {
+self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
   );
 });
 
-// Activate — delete ALL old caches, take control of ALL clients immediately
-self.addEventListener("activate", e => {
+self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-      .then(() => {
-        // Tell ALL open clients (including home screen app) to reload
-        return self.clients.matchAll({type:"window",includeUncontrolled:true});
-      })
-      .then(clients => {
-        clients.forEach(client => client.postMessage({type:"SW_ACTIVATED"}));
-      })
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
 });
 
-// Message handler — SKIP_WAITING forces immediate takeover
-self.addEventListener("message", e => {
-  if (e.data === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
-});
+self.addEventListener('fetch', e => {
+  // Never cache non-GET requests (POST etc) — fixes "put on Cache: POST unsupported"
+  if (e.request.method !== 'GET') return;
+  // Never cache Firebase / Google API calls
+  const url = e.request.url;
+  if (url.includes('firestore.googleapis.com') ||
+      url.includes('firebase') ||
+      url.includes('googleapis.com') ||
+      url.includes('unpkg.com') ||
+      url.includes('gstatic.com')) return;
 
-// Fetch — ALWAYS network-first for our own HTML/JS files
-// This ensures the home screen app always gets fresh content
-self.addEventListener("fetch", e => {
-  const url = new URL(e.request.url);
-
-  if (url.origin === self.location.origin) {
-    // Network-first with no-cache headers to bypass iOS Safari cache
-    e.respondWith(
-      fetch(e.request, {cache: "no-store"}).then(res => {
-        if (res.ok) {
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      return cached || fetch(e.request).then(res => {
+        if (res && res.status === 200 && res.type === 'basic') {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }
         return res;
-      }).catch(() => caches.match(e.request))
-    );
-    return;
-  }
+      });
+    }).catch(() => caches.match('/index.html'))
+  );
+});
 
-  // CDN resources (React, Babel, Firebase) — cache-first for speed
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
-      if (res.ok) {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
+// Push notification handler (for future background hunger alerts)
+self.addEventListener('push', e => {
+  const data = e.data ? e.data.json() : {};
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'BabyFeed', {
+      body: data.body || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: data
+    })
+  );
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/';
+  e.waitUntil(
+    clients.matchAll({type: 'window'}).then(wins => {
+      for (const w of wins) {
+        if (w.url === url && 'focus' in w) return w.focus();
       }
-      return res;
-    }))
+      if (clients.openWindow) return clients.openWindow(url);
+    })
   );
 });

@@ -1348,6 +1348,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const alarmDone=useRef({});
       const editRef=useRef(null);
       const [medAlertFiring,setMedAlertFiring]=useState(null);
+      const [hungryPopup,setHungryPopup]=useState(null);
       function sendPushNotif(title,body){if(Notification&&Notification.permission==="granted"){try{new Notification(title,{body,icon:"/icons/icon-192.png"});}catch(e){}}}
       async function handleAddMed(m){if("Notification" in window&&Notification.permission==="default")await Notification.requestPermission();await addMed(m);}
       async function handleDeleteMed(id){await deleteMed(id);}

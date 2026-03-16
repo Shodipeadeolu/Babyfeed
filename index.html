@@ -502,7 +502,7 @@ const {useState,useEffect,useRef,useCallback}=React;
 
       const addMed=async m=>db.collection(`families/${fref()}/meds`).add(m);
       const deleteMed=async id=>db.collection(`families/${fref()}/meds`).doc(id).delete();
-      const updateMed=async(id,data)=>db.collection(`families/${fref()}/meds`).doc(id).set(data,{merge:true});
+      const updateMed=async(id,data)=>db.collection(`families/${fref()}/meds`).doc(id).update(data);
       return{babies,logs,activities,meds,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity,addMed,deleteMed,updateMed};
     }
 

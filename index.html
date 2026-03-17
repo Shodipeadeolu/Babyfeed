@@ -1335,6 +1335,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [sm,setSm]=useState(0);
       const [se,setSe]=useState(false);
       const [showPartner,setShowPartner]=useState(false);
+      const [showSettings,setShowSettings]=useState(false);
       const [showLinkPartner,setShowLinkPartner]=useState(false);
       const [linkCode,setLinkCode]=useState("");
       const [linkError,setLinkError]=useState("");
@@ -1635,7 +1636,7 @@ const {useState,useEffect,useRef,useCallback}=React;
 
           {/* HEADER */}
           <div style={{background:T.bg2,borderBottom:`1px solid ${T.bord}`,padding:"14px 18px 12px",position:"sticky",top:0,zIndex:20}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:6,overflowX:"auto",scrollbarWidth:"none"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:18,fontWeight:900,color:T.text}}>{"🍼 BabyFeed"}</span>
                 {!isOnline&&(
@@ -1647,13 +1648,11 @@ const {useState,useEffect,useRef,useCallback}=React;
                   {view==="insights"?"← Log":"💡"}
                   {urgentCount>0&&view!=="insights"&&<span style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:"#FF4D6D"}}/>}
                 </button>
-                <button onClick={()=>switchView("dashboard")} style={{background:view==="dashboard"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="dashboard"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="dashboard"?"← Log":"📊"}</button>
-                <button onClick={()=>switchView("insights")} style={{background:view==="insights"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="insights"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="insights"?"← Log":"💡"}</button>
-                <button onClick={()=>switchView("history")} style={{background:view==="history"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="history"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="history"?"← Log":"📋"}</button>
-                <button onClick={()=>switchView("meds")} style={{background:view==="meds"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 12px",color:view==="meds"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{"💊"}</button>
-                <button onClick={toggleTheme} title="Toggle dark mode" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{dark?"☀️":"🌙"}</button>
-                <button onClick={()=>setShowPartner(true)} title="Invite care team" style={{width:32,height:32,borderRadius:"50%",background:T.bg3,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🤝</button>
-                <button onClick={()=>auth.signOut()} title="Sign out" style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",cursor:"pointer",color:"#fff",fontSize:13,fontWeight:900}}>
+                <button onClick={()=>switchView("dashboard")} style={{background:view==="dashboard"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 10px",color:view==="dashboard"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="dashboard"?"← Log":"📊"}</button>
+                <button onClick={()=>switchView("insights")} style={{background:view==="insights"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 10px",color:view==="insights"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="insights"?"← Log":"💡"}</button>
+                <button onClick={()=>switchView("history")} style={{background:view==="history"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 10px",color:view==="history"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="history"?"← Log":"📋"}</button>
+                <button onClick={()=>switchView("meds")} style={{background:view==="meds"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 10px",color:view==="meds"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{"💊"}</button>
+                <button onClick={()=>setShowSettings(true)} style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   {(user.displayName||user.email||"U")[0].toUpperCase()}
                 </button>
               </div>
@@ -1877,7 +1876,16 @@ const {useState,useEffect,useRef,useCallback}=React;
                             return(
                               <div key={item.id} style={{background:T.bg2,borderRadius:18,marginBottom:8,overflow:"hidden"}}>
                                 {!isEditing&&(
-                                  <div onClick={()=>{setEditingLog({log:item});setEditLogAmount(item.amount);setEditLogMilk(item.milkType);setEditLogBaby(b?.name||"");setEditLogTime(new Date(item.timestamp).toISOString().slice(0,16));}} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                                  <div onClick={()=>{
+                                    setEditingLog({log:item});
+                                    setEditLogAmount(item.amount);
+                                    setEditLogMilk(item.milkType);
+                                    setEditLogBaby(b?.name||"");
+                                    // Fix: use local time not UTC
+                                    const d=new Date(item.timestamp);
+                                    const local=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+                                    setEditLogTime(local);
+                                  }} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
                                     <div style={{width:44,height:44,borderRadius:14,background:(b?.color||"#eee")+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:13,fontWeight:900,color:b?.color}}>{b?.name?.[0]||"?"}</span></div>
                                     <div style={{flex:1}}>
                                       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1894,6 +1902,15 @@ const {useState,useEffect,useRef,useCallback}=React;
                                     <div style={{fontSize:12,color:T.text3,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:.8}}>✏️ Edit Feed</div>
                                     <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Time</div>
                                     <input type="datetime-local" value={editLogTime} onChange={e=>setEditLogTime(e.target.value)} style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:12}}/>
+                                    <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Milk Type</div>
+                                    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+                                      {MILK_TYPES.map(mt=>{const sel=editLogMilk===mt.value;return(
+                                        <button key={mt.value} onClick={()=>setEditLogMilk(mt.value)}
+                                          style={{padding:"8px 14px",background:sel?mt.color:T.bg3,border:`2px solid ${sel?mt.color:T.bord}`,borderRadius:12,color:sel?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                          {mt.label}
+                                        </button>
+                                      );})}
+                                    </div>
                                     <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Amount</div>
                                     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,background:T.bg3,borderRadius:14,padding:"8px 12px"}}>
                                       <button onClick={()=>setEditLogAmount(a=>Math.max(5,Number(a)-5))} style={{width:36,height:36,borderRadius:10,background:T.bg2,border:"none",fontSize:18,color:T.text2,cursor:"pointer"}}>-</button>
@@ -2064,6 +2081,38 @@ const {useState,useEffect,useRef,useCallback}=React;
             </div>
           )}
 
+          {/* SETTINGS SHEET */}
+          {showSettings&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.7)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,padding:"0"}}
+              onClick={e=>{if(e.target===e.currentTarget)setShowSettings(false);}}>
+              <div style={{background:T.bg2,borderRadius:"24px 24px 0 0",padding:"24px 24px calc(28px + env(safe-area-inset-bottom))",width:"100%",maxWidth:430,boxShadow:"0 -8px 40px rgba(0,0,0,0.3)"}}>
+                {/* Handle */}
+                <div style={{width:40,height:4,borderRadius:2,background:T.bord,margin:"0 auto 20px"}}/>
+                {/* Profile */}
+                <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:24,padding:"14px 16px",background:T.bg3,borderRadius:16}}>
+                  <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:18,fontWeight:900,flexShrink:0}}>
+                    {(user.displayName||user.email||"U")[0].toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:15,fontWeight:800,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.displayName||user.email||"User"}</div>
+                    <div style={{fontSize:11,color:T.text3,marginTop:2}}>{user.email||""}</div>
+                  </div>
+                </div>
+                {/* Options */}
+                {[
+                  {icon:"🌙",label:dark?"Switch to Light Mode":"Switch to Dark Mode",action:()=>{toggleTheme();}},
+                  {icon:"🤝",label:"Invite Care Team",action:()=>{setShowSettings(false);setShowPartner(true);}},
+                  {icon:"🚪",label:"Sign Out",action:()=>{setShowSettings(false);auth.signOut();},danger:true},
+                ].map(item=>(
+                  <button key={item.label} onClick={item.action}
+                    style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"14px 16px",background:"transparent",border:"none",borderRadius:14,cursor:"pointer",fontFamily:"inherit",marginBottom:4,textAlign:"left"}}>
+                    <span style={{fontSize:20,width:28,textAlign:"center"}}>{item.icon}</span>
+                    <span style={{fontSize:15,fontWeight:600,color:item.danger?"#FF4D6D":T.text}}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {/* UNDO TOAST */}
           {/* CONFIRM DELETE LOG */}
           {confirmDeleteLog&&(

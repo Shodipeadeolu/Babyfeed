@@ -449,31 +449,6 @@ const {useState,useEffect,useRef,useCallback}=React;
         return()=>uns.forEach(u=>u());
       },[uid]);
 
-      // VAPID public key for push notifications
-      const VAPID_PUBLIC_KEY="BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDkBNE24H6HYk4nOj1LySa7FpnB6h7h4HQNDI5Tq0C4A";
-      function urlBase64ToUint8Array(b64){const pad="=".repeat((4-b64.length%4)%4);const b=(b64+pad).replace(/-/g,"+").replace(/_/g,"/");const raw=atob(b);return new Uint8Array([...raw].map(c=>c.charCodeAt(0)));}
-
-      useEffect(()=>{
-        if(!familyId||!user)return;
-        // Subscribe to push notifications
-        if("serviceWorker" in navigator&&"PushManager" in window){
-          navigator.serviceWorker.ready.then(async reg=>{
-            try{
-              let sub=await reg.pushManager.getSubscription();
-              if(!sub){
-                sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)});
-              }
-              // Save subscription to Firestore
-              await db.collection(`families/${familyId}/pushSubscriptions`).doc(user.uid).set({
-                subscription:JSON.parse(JSON.stringify(sub)),
-                uid:user.uid,
-                updatedAt:new Date().toISOString()
-              });
-            }catch(e){console.log("Push subscription failed:",e);}
-          });
-        }
-      },[familyId,user?.uid]);
-
       useEffect(()=>{
         if(!familyId)return;
         const uns=[];
@@ -1539,6 +1514,22 @@ const {useState,useEffect,useRef,useCallback}=React;
       useEffect(()=>{window.__medsRef=meds;},[meds]);
       useEffect(()=>{window.__logsRef=logs;},[logs]);
       useEffect(()=>{window.__dismissedHungryRef=dismissedHungry;},[dismissedHungry]);
+      // Push subscription — wired here where both user and familyId are available
+      useEffect(()=>{
+        if(!familyId||!user?.uid)return;
+        if(!("serviceWorker" in navigator)||!("PushManager" in window))return;
+        const VAPID="BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDkBNE24H6HYk4nOj1LySa7FpnB6h7h4HQNDI5Tq0C4A";
+        function b64(b){const pad="=".repeat((4-b.length%4)%4);const s=(b+pad).replace(/-/g,"+").replace(/_/g,"/");const r=atob(s);return new Uint8Array([...r].map(c=>c.charCodeAt(0)));}
+        navigator.serviceWorker.ready.then(async reg=>{
+          try{
+            let sub=await reg.pushManager.getSubscription();
+            if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(VAPID)});
+            await db.collection(`families/${familyId}/pushSubscriptions`).doc(user.uid).set({
+              subscription:JSON.parse(JSON.stringify(sub)),uid:user.uid,updatedAt:new Date().toISOString()
+            });
+          }catch(e){console.log("Push sub failed:",e);}
+        });
+      },[familyId,user?.uid]);
       useEffect(()=>{window.__babiesRef=babies;},[babies]);
       useEffect(()=>{
         function tick(){

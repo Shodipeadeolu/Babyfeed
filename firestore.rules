@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper: is the caller authenticated? ──────────────────────────────
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    // ── Helper: what familyId does the caller belong to? ─────────────────
+    // Reads the user doc to find their familyId.
+    function callerFamilyId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId;
+    }
+
+    // ── Helper: is the caller a member of the given family? ───────────────
+    function isFamilyMember(familyId) {
+      return isAuthed() && callerFamilyId() == familyId;
+    }
+
+    // ── Users collection ─────────────────────────────────────────────────
+    // Each user can only read/write their own user doc.
+    match /users/{uid} {
+      allow read, write: if isAuthed() && request.auth.uid == uid;
+    }
+
+    // ── Families collection (top-level family doc) ────────────────────────
+    // Only the family owner (uid == familyId) or a member can read.
+    // Only a member can write (to update invite codes etc).
+    match /families/{familyId} {
+      allow read:  if isFamilyMember(familyId);
+      allow write: if isFamilyMember(familyId);
+
+      // ── Babies ──────────────────────────────────────────────────────────
+      match /babies/{babyId} {
+        allow read, write: if isFamilyMember(familyId);
+      }
+
+      // ── Feed logs ───────────────────────────────────────────────────────
+      match /logs/{logId} {
+        allow read, write: if isFamilyMember(familyId);
+      }
+
+      // ── Activities (sleep, diaper, sucking) ─────────────────────────────
+      match /activities/{activityId} {
+        allow read, write: if isFamilyMember(familyId);
+      }
+
+      // ── Feeding timers ───────────────────────────────────────────────────
+      match /timers/{timerId} {
+        allow read, write: if isFamilyMember(familyId);
+      }
+
+      // ── Medications ──────────────────────────────────────────────────────
+      match /meds/{medId} {
+        allow read, write: if isFamilyMember(familyId);
+      }
+
+      // ── Push subscriptions (for future background hunger alerts) ─────────
+      match /pushSubscriptions/{uid} {
+        allow read, write: if isFamilyMember(familyId) && request.auth.uid == uid;
+      }
+    }
+  }
+}

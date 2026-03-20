@@ -738,7 +738,11 @@ const {useState,useEffect,useRef,useCallback}=React;
     function DashboardView({babies,logs,activities}){
       const T=useT();
       const [range,setRange]=useState(7);
-      const now=Date.now(),recent=logs.filter(l=>new Date(l.timestamp).getTime()>=now-range*86400000);
+      const now=Date.now();
+      // rangeStart = start of today for 1d, start of (range-1) days ago for others
+      const _today=new Date();_today.setHours(0,0,0,0);
+      const rangeStart=range===1?_today.getTime():_today.getTime()-(range-1)*86400000;
+      const recent=logs.filter(l=>new Date(l.timestamp).getTime()>=rangeStart);
       const gm=range<=14?"day":range<=90?"week":"month";
       function gk(ts){const d=new Date(ts);if(gm==="day")return d.toDateString();if(gm==="week"){const w=new Date(d);w.setDate(d.getDate()-d.getDay());return w.toDateString();}return`${d.getFullYear()}-${d.getMonth()}`;}
       function gl(k){if(gm==="day")return new Date(k).toLocaleDateString([],{weekday:"short"});if(gm==="week")return new Date(k).toLocaleDateString([],{month:"short",day:"numeric"});const[y,m]=k.split("-");return new Date(+y,+m).toLocaleDateString([],{month:"short",year:"2-digit"});}
@@ -747,8 +751,8 @@ const {useState,useEffect,useRef,useCallback}=React;
       if(gm==="day"){for(let i=0;i<range;i++){const d=new Date(now-(range-1-i)*86400000),k=d.toDateString();if(!gmap[k]){gmap[k]={k,label:d.toLocaleDateString([],{weekday:"short"}),ts:d.getTime()};babies.forEach(b=>gmap[k][b.id]=0);}}}
       const cd=Object.values(gmap).sort((a,b)=>a.ts-b.ts);cd.forEach(d=>{d.total=babies.reduce((s,b)=>s+(d[b.id]||0),0);});
       const mb=Math.max(...cd.map(d=>d.total),1);
-      function stats(bid){const bl=recent.filter(l=>l.babyId===bid),t=bl.reduce((s,l)=>s+l.amount,0),avg=bl.length>0?Math.round(t/range):0,apf=bl.length>0?Math.round(t/bl.length):0,s=[...bl].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)),iv=[];for(let i=1;i<s.length;i++)iv.push((new Date(s[i].timestamp)-new Date(s[i-1].timestamp))/60000);const ai=iv.length>0?Math.round(iv.reduce((x,y)=>x+y,0)/iv.length):0;const recentActs=(activities||[]).filter(a=>a.babyId===bid&&a.type==="sucking"&&new Date(a.startTime).getTime()>=Date.now()-range*86400000);const suckMins=Math.round(recentActs.reduce((s,a)=>s+(a.durationSecs||0),0)/60);return{total:t,avg,apf,feeds:bl.length,ai,suckMins};}
-      function mkbd(bid){const bl=recent.filter(l=>l.babyId===bid),t=bl.reduce((s,l)=>s+l.amount,0);const rows=MILK_TYPES.map(m=>{const a=bl.filter(l=>l.milkType===m.value).reduce((s,l)=>s+l.amount,0);return{...m,a,p:t>0?Math.round(a/t*100):0};}).filter(m=>m.a>0);const recentActs=(activities||[]).filter(a=>a.babyId===bid&&a.type==="sucking"&&new Date(a.startTime).getTime()>=Date.now()-range*86400000);const suckSecs=recentActs.reduce((s,a)=>s+(a.durationSecs||0),0);if(suckSecs>0){const sh=Math.floor(suckSecs/3600),sm=Math.floor((suckSecs%3600)/60);rows.push({value:"sucking",label:"Sucking",color:"#F59E0B",a:suckSecs,p:null,display:`${sh>0?sh+"h ":""}${sm}m`});}return rows;}
+      function stats(bid){const bl=recent.filter(l=>l.babyId===bid),t=bl.reduce((s,l)=>s+l.amount,0),avg=bl.length>0?Math.round(t/range):0,apf=bl.length>0?Math.round(t/bl.length):0,s=[...bl].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)),iv=[];for(let i=1;i<s.length;i++)iv.push((new Date(s[i].timestamp)-new Date(s[i-1].timestamp))/60000);const ai=iv.length>0?Math.round(iv.reduce((x,y)=>x+y,0)/iv.length):0;const recentActs=(activities||[]).filter(a=>a.babyId===bid&&a.type==="sucking"&&new Date(a.startTime).getTime()>=rangeStart);const suckMins=Math.round(recentActs.reduce((s,a)=>s+(a.durationSecs||0),0)/60);return{total:t,avg,apf,feeds:bl.length,ai,suckMins};}
+      function mkbd(bid){const bl=recent.filter(l=>l.babyId===bid),t=bl.reduce((s,l)=>s+l.amount,0);const rows=MILK_TYPES.map(m=>{const a=bl.filter(l=>l.milkType===m.value).reduce((s,l)=>s+l.amount,0);return{...m,a,p:t>0?Math.round(a/t*100):0};}).filter(m=>m.a>0);const recentActs=(activities||[]).filter(a=>a.babyId===bid&&a.type==="sucking"&&new Date(a.startTime).getTime()>=rangeStart);const suckSecs=recentActs.reduce((s,a)=>s+(a.durationSecs||0),0);if(suckSecs>0){const sh=Math.floor(suckSecs/3600),sm=Math.floor((suckSecs%3600)/60);rows.push({value:"sucking",label:"Sucking",color:"#F59E0B",a:suckSecs,p:null,display:`${sh>0?sh+"h ":""}${sm}m`});}return rows;}
       const hm=Array(24).fill(0);recent.forEach(l=>{hm[new Date(l.timestamp).getHours()]++;});const mh=Math.max(...hm,1);
       const rl=range>=365?"1 year":range>=90?`${range/30|0} months`:range>=30?"1 month":range===1?"Today":`${range} days`;
       const C=({ch,s={}})=><div style={{background:T.bg2,borderRadius:20,padding:"18px",marginBottom:14,...s}}>{ch}</div>;

@@ -159,6 +159,25 @@ const {useState,useEffect,useRef,useCallback}=React;
     function countdown(ms){if(ms<=0)return"Feed now!";const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;if(h>0)return`${h}h ${m}m`;if(m>0)return`${m}m ${sec}s`;return`${sec}s`;}
     function tlabel(t){if(!t)return"";const h=Math.floor(t.totalMins/60),m=t.totalMins%60;if(h>0&&m>0)return`${h}h ${m}m`;if(h>0)return`${h}h`;return`${m}m`;}
     function genCode(){return Math.random().toString(36).substring(2,8).toUpperCase();}
+    function calcAge(dob){
+      if(!dob)return null;
+      const d=new Date(dob),now=new Date();
+      const weeks=Math.floor((now-d)/604800000);
+      if(weeks<16)return`${weeks}w`;
+      const months=Math.floor((now-d)/2629800000);
+      if(months<24)return`${months}mo`;
+      return`${Math.floor(months/12)}y`;
+    }
+    function predictWeight(weightLog){
+      if(!weightLog||weightLog.length<2)return null;
+      const sorted=[...weightLog].sort((a,b)=>new Date(a.date)-new Date(b.date));
+      const first=sorted[0],last=sorted[sorted.length-1];
+      const weeks=(new Date(last.date)-new Date(first.date))/604800000;
+      if(weeks<1)return null;
+      const weeklyGain=(last.weight-first.weight)/weeks;
+      const predicted=Math.round((last.weight+weeklyGain*2)*100)/100;
+      return{predicted,weeklyGain:Math.round(weeklyGain*1000),lastWeight:last.weight,lastDate:last.date};
+    }
 
     // ── PIN PAD ───────────────────────────────────────────────
     function PinPad({value,onChange,color="#7C5CBF"}){const T=useT();
@@ -500,10 +519,14 @@ const {useState,useEffect,useRef,useCallback}=React;
       const deleteActivity=async id=>db.collection(`families/${fref()}/activities`).doc(id).delete();
       const updateActivity=async(id,data)=>db.collection(`families/${fref()}/activities`).doc(id).set(data);
 
+      const addWeightEntry=async(babyId,entry)=>db.collection(`families/${fref()}/babies/${babyId}/weightLog`).add(entry);
+      const updateWeightEntry=async(babyId,id,data)=>db.collection(`families/${fref()}/babies/${babyId}/weightLog`).doc(id).set(data,{merge:true});
+      const deleteWeightEntry=async(babyId,id)=>db.collection(`families/${fref()}/babies/${babyId}/weightLog`).doc(id).delete();
+      const getWeightLog=async(babyId)=>{const snap=await db.collection(`families/${fref()}/babies/${babyId}/weightLog`).orderBy("date","desc").get();return snap.docs.map(d=>({...d.data(),id:d.id}));};
       const addMed=async m=>db.collection(`families/${fref()}/meds`).add(m);
       const deleteMed=async id=>db.collection(`families/${fref()}/meds`).doc(id).delete();
       const updateMed=async(id,data)=>db.collection(`families/${fref()}/meds`).doc(id).update(data);
-      return{babies,logs,activities,meds,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity,addMed,deleteMed,updateMed};
+      return{babies,logs,activities,meds,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity,addMed,deleteMed,updateMed,addWeightEntry,updateWeightEntry,deleteWeightEntry,getWeightLog};
     }
 
     // ── INSIGHTS ENGINE ───────────────────────────────────────
@@ -1406,7 +1429,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const T=useT();
       const [user,setUser]=useState(undefined);
       const [unit,setUnit]=useState(()=>localStorage.getItem('bf_unit')||'ml');
-      const {babies,logs,activities,meds,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity,addMed,deleteMed,updateMed}=useFirestore(user?.uid);
+      const {babies,logs,activities,meds,timers,ready,familyId,saveBaby,deleteBaby,addLog,deleteLog,restoreLog,saveTimer,getOrCreateInviteCode,addActivity,deleteActivity,updateActivity,addMed,deleteMed,updateMed,addWeightEntry,updateWeightEntry,deleteWeightEntry,getWeightLog}=useFirestore(user?.uid);
 
       const [activeBabyId,setActiveBabyId]=useState(null);
       const [amount,setAmount]=useState(60);
@@ -1414,7 +1437,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [view,setView]=useState("log");
       const [viewAnim,setViewAnim]=useState(false);
       function switchView(v){setViewAnim(true);setTimeout(()=>{setView(v);setViewAnim(false);},80);}
-      const VIEWS=["log","dashboard","history","insights","meds"];
+      const VIEWS=["log","dashboard","history","insights","meds","ai"];
       const swipeStart=React.useRef(null);
       function onTouchStart(e){swipeStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};}
       function onTouchEnd(e){
@@ -1431,6 +1454,26 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [flashSaved,setFlashSaved]=useState(false);
       const [addingBaby,setAddingBaby]=useState(false);
       const [newName,setNewName]=useState("");
+      // Baby profile fields for add/edit
+      const [newDob,setNewDob]=useState("");
+      const [newGender,setNewGender]=useState("");
+      const [newFeedingType,setNewFeedingType]=useState("mixed");
+      const [newPremature,setNewPremature]=useState(false);
+      const [newGestWeeks,setNewGestWeeks]=useState("");
+      const [newBirthWeight,setNewBirthWeight]=useState("");
+      const [newCurrentWeight,setNewCurrentWeight]=useState("");
+      // Baby profile edit sheet
+      const [profileBabyId,setProfileBabyId]=useState(null);
+      const [profileDob,setProfileDob]=useState("");
+      const [profileGender,setProfileGender]=useState("");
+      const [profileFeedingType,setProfileFeedingType]=useState("mixed");
+      const [profilePremature,setProfilePremature]=useState(false);
+      const [profileGestWeeks,setProfileGestWeeks]=useState("");
+      const [profileBirthWeight,setProfileBirthWeight]=useState("");
+      const [weightLogEntry,setWeightLogEntry]=useState("");
+      const [weightLog,setWeightLog]=useState([]);
+      const [editWeightId,setEditWeightId]=useState(null);
+      const [editWeightVal,setEditWeightVal]=useState("");
       const [editingId,setEditingId]=useState(null);
       const [editingName,setEditingName]=useState("");
       const [colorPickerId,setColorPickerId]=useState(null);
@@ -1448,6 +1491,16 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [se,setSe]=useState(false);
       const [showPartner,setShowPartner]=useState(false);
       const [showSettings,setShowSettings]=useState(false);
+      // AI tab state
+      const [aiChats,setAiChats]=useState([]);
+      const [aiChatId,setAiChatId]=useState(null);
+      const [aiMessages,setAiMessages]=useState([]);
+      const [aiInput,setAiInput]=useState("");
+      const [aiLoading,setAiLoading]=useState(false);
+      const [aiError,setAiError]=useState("");
+      const [aiMsgsToday,setAiMsgsToday]=useState(0);
+      const [aiPlan,setAiPlan]=useState("free"); // free|basic|pro
+      const AI_LIMITS={free:5,basic:30,pro:Infinity};
       const [showLinkPartner,setShowLinkPartner]=useState(false);
       const [linkCode,setLinkCode]=useState("");
       const [linkError,setLinkError]=useState("");
@@ -1534,6 +1587,98 @@ const {useState,useEffect,useRef,useCallback}=React;
       useEffect(()=>{if(babies.length>0&&!activeBabyId)setActiveBabyId(babies[0].id);},[babies]);
       useEffect(()=>{window.__medsRef=meds;},[meds]);
       useEffect(()=>{window.__logsRef=logs;},[logs]);
+
+      // Load AI chats for this user
+      useEffect(()=>{
+        if(!user?.uid)return;
+        return db.collection(`users/${user.uid}/aiChats`).orderBy("createdAt","desc").limit(20).onSnapshot(snap=>{
+          setAiChats(snap.docs.map(d=>({...d.data(),id:d.id})));
+        });
+      },[user?.uid]);
+
+      // Load AI usage count
+      useEffect(()=>{
+        if(!user?.uid)return;
+        db.collection("users").doc(user.uid).get().then(doc=>{
+          const data=doc.data()||{};
+          const today=new Date().toDateString();
+          if(data.aiResetDate!==today){setAiMsgsToday(0);}
+          else{setAiMsgsToday(data.aiMsgsToday||0);}
+          setAiPlan(data.subscription?.plan||"free");
+        });
+      },[user?.uid]);
+
+      async function startNewChat(){
+        setAiChatId(null);setAiMessages([]);setAiInput("");setAiError("");
+      }
+
+      async function loadChat(chat){
+        setAiChatId(chat.id);setAiMessages(chat.messages||[]);setAiError("");
+      }
+
+      function buildBabyContext(babyId){
+        const b=babies.find(x=>x.id===babyId);
+        if(!b)return"";
+        const age=calcAge(b.dob)||"unknown age";
+        const last14=logs.filter(l=>l.babyId===babyId&&new Date(l.timestamp).getTime()>=Date.now()-14*86400000);
+        const totalMl=last14.reduce((s,l)=>s+l.amount,0);
+        const avgDay=last14.length>0?Math.round(totalMl/14):0;
+        const avgFeed=last14.length>0?Math.round(totalMl/last14.length):0;
+        const milkBreak={};last14.forEach(l=>{milkBreak[l.milkType]=(milkBreak[l.milkType]||0)+l.amount;});
+        const milkStr=Object.entries(milkBreak).map(([k,v])=>`${k}: ${Math.round(v/totalMl*100)||0}%`).join(", ");
+        const sleepLogs=activities.filter(a=>a.babyId===babyId&&a.type==="sleep"&&new Date(a.startTime).getTime()>=Date.now()-14*86400000);
+        const avgSleepHrs=sleepLogs.length>0?Math.round(sleepLogs.reduce((s,a)=>s+(a.durationSecs||0),0)/sleepLogs.length/3600*10)/10:null;
+        const diaperLogs=activities.filter(a=>a.babyId===babyId&&a.type==="diaper"&&new Date(a.startTime).getTime()>=Date.now()-14*86400000);
+        const wetCount=diaperLogs.filter(a=>a.diaperType==="wet").length;
+        const dirtyCount=diaperLogs.filter(a=>a.diaperType==="dirty").length;
+        return`Baby: ${b.name}, ${age} old, gender: ${b.gender||"not specified"}, feeding type: ${b.feedingType||"mixed"}, birth weight: ${b.birthWeight||"unknown"}kg, current weight: ${b.currentWeight||"unknown"}kg, premature: ${b.premature?"yes ("+b.gestationalWeeks+" weeks)":"no"}.
+Last 14 days feeding: ${last14.length} feeds, avg ${avgDay}ml/day, avg ${avgFeed}ml/feed. Milk: ${milkStr||"no data"}.
+Sleep: avg ${avgSleepHrs||"unknown"}h per session.
+Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
+      }
+
+      async function sendAiMessage(){
+        if(!aiInput.trim()||aiLoading)return;
+        const limit=AI_LIMITS[aiPlan];
+        if(aiMsgsToday>=limit){setAiError(`Daily limit reached (${limit} messages on ${aiPlan} plan). Upgrade for more.`);return;}
+        const userMsg={role:"user",content:aiInput.trim(),timestamp:new Date().toISOString()};
+        const newMsgs=[...aiMessages,userMsg];
+        setAiMessages(newMsgs);setAiInput("");setAiLoading(true);setAiError("");
+        const babyCtx=buildBabyContext(activeBabyId);
+        try{
+          const resp=await fetch("https://api.anthropic.com/v1/messages",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+              model:"claude-haiku-4-5-20251001",
+              max_tokens:1000,
+              system:`You are BabyFeed AI, a warm and knowledgeable assistant helping parents track and understand their baby's health. You have access to this baby's actual feeding, sleep and diaper data. Be specific, evidence-based and reassuring. For serious medical concerns, always advise consulting a paediatrician. Never diagnose. End each response with a one-line disclaimer: "Always consult your paediatrician for medical decisions."
+
+Current baby data:
+${babyCtx}`,
+              messages:newMsgs.map(m=>({role:m.role,content:m.content}))
+            })
+          });
+          const data=await resp.json();
+          const reply=data.content?.[0]?.text||"Sorry, I couldn't generate a response.";
+          const aiMsg={role:"assistant",content:reply,timestamp:new Date().toISOString()};
+          const finalMsgs=[...newMsgs,aiMsg];
+          setAiMessages(finalMsgs);
+          // Save chat to Firestore
+          const title=userMsg.content.slice(0,50)+(userMsg.content.length>50?"...":"");
+          if(aiChatId){
+            await db.collection(`users/${user.uid}/aiChats`).doc(aiChatId).update({messages:finalMsgs,updatedAt:new Date().toISOString()});
+          } else {
+            const ref=await db.collection(`users/${user.uid}/aiChats`).add({babyId:activeBabyId,title,messages:finalMsgs,createdAt:new Date().toISOString()});
+            setAiChatId(ref.id);
+          }
+          // Update usage count
+          const today=new Date().toDateString();
+          const newCount=aiMsgsToday+1;setAiMsgsToday(newCount);
+          await db.collection("users").doc(user.uid).set({aiMsgsToday:newCount,aiResetDate:today},{merge:true});
+        }catch(e){setAiError("Failed to get response. Check your connection.");}
+        setAiLoading(false);
+      }
       useEffect(()=>{window.__dismissedHungryRef=dismissedHungry;},[dismissedHungry]);
       // Push subscription — wired here where both user and familyId are available
       // Backfill displayName/email for existing users on each login
@@ -1669,14 +1814,27 @@ const {useState,useEffect,useRef,useCallback}=React;
       async function doAddBaby(){
         const n=newName.trim();if(!n)return;
         const id=`baby_${Date.now()}`;
-        await saveBaby({id,name:n,color:BABY_COLORS[babies.length%BABY_COLORS.length]});
+        const babyData={id,name:n,color:BABY_COLORS[babies.length%BABY_COLORS.length]};
+        if(newDob)babyData.dob=newDob;
+        if(newGender)babyData.gender=newGender;
+        if(newFeedingType)babyData.feedingType=newFeedingType;
+        babyData.premature=newPremature;
+        if(newPremature&&newGestWeeks)babyData.gestationalWeeks=Number(newGestWeeks);
+        if(newBirthWeight)babyData.birthWeight=Number(newBirthWeight);
+        if(newCurrentWeight)babyData.currentWeight=Number(newCurrentWeight);
+        await saveBaby(babyData);
         await saveTimer(id,{enabled:false,totalMins:120});
+        // Save initial weight log entry if provided
+        if(newCurrentWeight){
+          await addWeightEntry(id,{weight:Number(newCurrentWeight),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString()});
+        }
         // Create family doc if first baby (owner)
         if(babies.length===0&&familyId){
           await db.collection("families").doc(familyId).set({ownerId:user.uid,createdAt:new Date().toISOString()},{merge:true});
           await db.collection("users").doc(user.uid).set({familyId,role:"owner",displayName:user.displayName||"",email:user.email||""},{merge:true});
         }
-        setNewName("");setAddingBaby(false);setActiveBabyId(id);setView("log");
+        setNewName("");setNewDob("");setNewGender("");setNewFeedingType("mixed");setNewPremature(false);setNewGestWeeks("");setNewBirthWeight("");setNewCurrentWeight("");
+        setAddingBaby(false);setActiveBabyId(id);setView("log");
       }
       async function doDelBaby(){if(!confirmDeleteBaby)return;await deleteBaby(confirmDeleteBaby.id);setConfirmDeleteBaby(null);if(activeBabyId===confirmDeleteBaby.id){const r=babies.filter(b=>b.id!==confirmDeleteBaby.id);setActiveBabyId(r[0]?.id);}}
       async function saveEditName(){const n=editingName.trim();if(n){const b=babies.find(x=>x.id===editingId);if(b)await saveBaby({...b,name:n});}setEditingId(null);}
@@ -1788,10 +1946,56 @@ const {useState,useEffect,useRef,useCallback}=React;
           <div style={{fontSize:72,marginBottom:16}}>👶</div>
           <div style={{fontSize:24,fontWeight:900,color:T.text,marginBottom:8}}>Welcome to BabyFeed!</div>
           <div style={{fontSize:14,color:T.text2,marginBottom:40,textAlign:"center"}}>Let's add your baby to get started</div>
-          <div style={{width:"100%",maxWidth:320}}>
-            <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doAddBaby()} placeholder="Enter baby's name"
-              style={{width:"100%",padding:"18px",border:`2.5px solid ${T.bord}`,borderRadius:18,fontSize:18,fontFamily:"inherit",color:T.text,background:T.bg2,marginBottom:16,textAlign:"center",boxSizing:"border-box"}}/>
-            <button onClick={doAddBaby} style={{width:"100%",padding:"18px",background:"linear-gradient(135deg,#FF6B9D,#A78BFA)",border:"none",borderRadius:18,color:"#fff",fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 6px 20px rgba(255,107,157,0.35)"}}>Add Baby 🍼</button>
+          <div style={{width:"100%",maxWidth:360,overflowY:"auto",maxHeight:"75vh"}}>
+            <input autoFocus value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doAddBaby()} placeholder="Baby's name"
+              style={{width:"100%",padding:"16px",border:`2.5px solid ${T.bord}`,borderRadius:16,fontSize:16,fontFamily:"inherit",color:T.text,background:T.bg2,marginBottom:12,textAlign:"center",boxSizing:"border-box"}}/>
+            <div style={{display:"flex",gap:10,marginBottom:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:4}}>{"Date of Birth"}</div>
+                <input type="date" value={newDob} onChange={e=>setNewDob(e.target.value)}
+                  style={{width:"100%",padding:"10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box"}}/>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:4}}>{"Gender"}</div>
+                <select value={newGender} onChange={e=>setNewGender(e.target.value)}
+                  style={{width:"100%",padding:"10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box"}}>
+                  <option value="">{"Select"}</option>
+                  <option value="male">{"Male"}</option>
+                  <option value="female">{"Female"}</option>
+                </select>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:6}}>{"Feeding Type"}</div>
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              {[["breastfed","🤱 Breast"],["formula","🍼 Formula"],["mixed","🔀 Mixed"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setNewFeedingType(v)}
+                  style={{flex:1,padding:"9px 4px",background:newFeedingType===v?"#7C5CBF":T.bg2,border:`2px solid ${newFeedingType===v?"#7C5CBF":T.bord}`,borderRadius:12,color:newFeedingType===v?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10,marginBottom:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:4}}>{"Birth Weight (kg)"}</div>
+                <input type="number" step="0.01" value={newBirthWeight} onChange={e=>setNewBirthWeight(e.target.value)} placeholder="e.g. 3.2"
+                  style={{width:"100%",padding:"10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box"}}/>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:4}}>{"Current Weight (kg)"}</div>
+                <input type="number" step="0.01" value={newCurrentWeight} onChange={e=>setNewCurrentWeight(e.target.value)} placeholder="e.g. 3.8"
+                  style={{width:"100%",padding:"10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <button onClick={()=>setNewPremature(p=>!p)}
+                style={{width:24,height:24,borderRadius:6,background:newPremature?"#7C5CBF":T.bg2,border:`2px solid ${newPremature?"#7C5CBF":T.bord}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {newPremature&&<span style={{color:"#fff",fontSize:14,lineHeight:1}}>{"✓"}</span>}
+              </button>
+              <span style={{fontSize:13,color:T.text2,fontWeight:600}}>{"Premature baby"}</span>
+              {newPremature&&<input type="number" value={newGestWeeks} onChange={e=>setNewGestWeeks(e.target.value)} placeholder="Weeks at birth"
+                style={{flex:1,padding:"8px",border:`2px solid ${T.bord}`,borderRadius:10,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2}}/>}
+            </div>
+            <button onClick={doAddBaby} style={{width:"100%",padding:"16px",background:"linear-gradient(135deg,#FF6B9D,#A78BFA)",border:"none",borderRadius:16,color:"#fff",fontSize:16,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 6px 20px rgba(255,107,157,0.35)"}}>{"Add Baby 🍼"}</button>
           </div>
           <button onClick={()=>auth.signOut()} style={{marginTop:32,background:"none",border:"none",color:T.text3,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
         </div>
@@ -1819,6 +2023,7 @@ const {useState,useEffect,useRef,useCallback}=React;
                 </button>
                 <button onClick={()=>switchView("history")} style={{background:view==="history"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 10px",color:view==="history"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{view==="history"?"← Log":"📋"}</button>
                 <button onClick={()=>switchView("meds")} style={{background:view==="meds"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 10px",color:view==="meds"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>{"💊"}</button>
+                <button onClick={()=>switchView("ai")} style={{background:view==="ai"?T.bg4:"transparent",border:"none",borderRadius:10,padding:"6px 10px",color:view==="ai"?"#7C5CBF":T.text2,fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:700,position:"relative"}}>{"AI"}</button>
                 <button onClick={()=>setShowSettings(true)} style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   {(user.displayName||user.email||"U")[0].toUpperCase()}
                 </button>
@@ -1834,6 +2039,7 @@ const {useState,useEffect,useRef,useCallback}=React;
                       {ie?<input ref={editRef} value={editingName} onChange={e=>setEditingName(e.target.value)} onBlur={saveEditName} onKeyDown={e=>{if(e.key==="Enter")saveEditName();if(e.key==="Escape")setEditingId(null);}} style={{width:80,background:"transparent",border:"none",outline:"none",fontSize:13,fontWeight:800,color:ia?"#fff":"#444",fontFamily:"inherit",padding:0}}/>
                         :<button onClick={()=>swBaby(b.id)} style={{background:"none",border:"none",color:ia?"#fff":"#AAA",fontSize:13,cursor:"pointer",fontFamily:"inherit",fontWeight:800,padding:0}}>{b.name}</button>}
                       <button onClick={()=>{setEditingId(b.id);setEditingName(b.name);swBaby(b.id);setColorPickerId(colorPickerId===b.id?null:b.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"2px 3px",color:ia?"rgba(255,255,255,0.65)":"#CCC",fontSize:11}}>✏</button>
+                      <button onClick={async(e)=>{e.stopPropagation();setProfileBabyId(b.id);setProfileDob(b.dob||"");setProfileGender(b.gender||"");setProfileFeedingType(b.feedingType||"mixed");setProfilePremature(b.premature||false);setProfileGestWeeks(String(b.gestationalWeeks||""));const log=await getWeightLog(b.id);setWeightLog(log);}} style={{background:"none",border:"none",cursor:"pointer",padding:"2px 3px",color:ia?"rgba(255,255,255,0.65)":"#CCC",fontSize:11}}>{"👤"}</button>
                       {babies.length>1&&<button onClick={()=>setConfirmDeleteBaby(b)} style={{background:ia?"rgba(255,255,255,0.22)":"#E8E0F8",border:"none",cursor:"pointer",padding:"2px 7px",color:ia?"rgba(255,255,255,0.85)":"#B5ACD8",fontSize:13,borderRadius:10,lineHeight:1,marginRight:2}}>×</button>}
                     </div>
                     {sc&&<div style={{display:"flex",gap:6,paddingLeft:4}}>{BABY_COLORS.slice(0,6).map(c=><button key={c} onClick={()=>chColor(b.id,c)} style={{width:22,height:22,borderRadius:"50%",background:c,border:b.color===c?"3px solid #1a1a2e":"3px solid transparent",cursor:"pointer",padding:0}}/>)}</div>}
@@ -1987,7 +2193,97 @@ const {useState,useEffect,useRef,useCallback}=React;
               onDismissIntake={dismissIntake}
 />}
             {view==="dashboard"&&<DashboardView babies={babies} logs={logs} activities={activities}/>}
-            {view==="meds"&&<MedsView babies={babies} meds={meds} onAddMed={handleAddMed} onDeleteMed={handleDeleteMed} onConfirmDose={handleConfirmDose} onTogglePause={handleTogglePause} nowMs={nowMs}/>}
+            {view==="meds"&&<MedsView babies={babies} meds={meds} onAddMed={handleAddMed} onDeleteMed={handleDeleteMed} onConfirmDose={handleConfirmDose} onTogglePause={handleTogglePause} nowMs={nowMs}/> }
+
+            {view==="ai"&&(
+              <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 200px)"}}>
+                {/* Header row */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div>
+                    <div style={{fontSize:18,fontWeight:900,color:T.text}}>{"BabyFeed AI"}</div>
+                    <div style={{fontSize:11,color:T.text3,marginTop:2}}>
+                      {aiPlan==="pro"?"Unlimited messages":
+                       `${Math.max(0,AI_LIMITS[aiPlan]-aiMsgsToday)} of ${AI_LIMITS[aiPlan]} messages left today`}
+                      <span style={{marginLeft:8,background:aiPlan==="pro"?"#34D399":aiPlan==="basic"?"#7C5CBF":"#F59E0B",color:"#fff",padding:"1px 6px",borderRadius:6,fontSize:10,fontWeight:700,textTransform:"uppercase"}}>{aiPlan}</span>
+                    </div>
+                  </div>
+                  <button onClick={startNewChat} style={{padding:"8px 14px",background:"#7C5CBF22",border:"1.5px solid #7C5CBF44",borderRadius:12,color:"#7C5CBF",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{"+ New Chat"}</button>
+                </div>
+
+                {/* Chat history sidebar (collapsed list) */}
+                {aiChats.length>0&&aiMessages.length===0&&(
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:8}}>{"Recent Chats"}</div>
+                    {aiChats.slice(0,5).map(chat=>(
+                      <button key={chat.id} onClick={()=>loadChat(chat)}
+                        style={{width:"100%",textAlign:"left",padding:"10px 14px",background:T.bg2,border:"none",borderRadius:12,marginBottom:6,cursor:"pointer",fontFamily:"inherit"}}>
+                        <div style={{fontSize:13,fontWeight:600,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{chat.title}</div>
+                        <div style={{fontSize:11,color:T.text3,marginTop:2}}>{new Date(chat.createdAt).toLocaleDateString([],{day:"numeric",month:"short"})}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Quick prompts when no messages */}
+                {aiMessages.length===0&&(
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:8}}>{"Quick Questions"}</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                      {[
+                        "Is feeding normal for this age?",
+                        "How is sleep tracking?",
+                        "Give me a full health summary",
+                        "Any concerns I should watch?",
+                        "Compare this week to last week"
+                      ].map(q=>(
+                        <button key={q} onClick={()=>{setAiInput(q);}}
+                          style={{padding:"8px 14px",background:T.bg2,border:`1.5px solid ${T.bord}`,borderRadius:20,color:T.text2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Messages */}
+                <div style={{flex:1,overflowY:"auto",marginBottom:12,display:"flex",flexDirection:"column",gap:12}}>
+                  {aiMessages.map((msg,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start",gap:8,alignItems:"flex-start"}}>
+                      {msg.role==="assistant"&&<div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{"🍼"}</div>}
+                      <div style={{maxWidth:"80%",padding:"12px 14px",borderRadius:msg.role==="user"?"18px 18px 4px 18px":"18px 18px 18px 4px",
+                        background:msg.role==="user"?"linear-gradient(135deg,#7C5CBF,#A78BFA)":T.bg2,
+                        color:msg.role==="user"?"#fff":T.text,fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                  {aiLoading&&(
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <div style={{width:28,height:28,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{"🍼"}</div>
+                      <div style={{padding:"12px 16px",background:T.bg2,borderRadius:"18px 18px 18px 4px"}}>
+                        <div style={{display:"flex",gap:4}}>
+                          {[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#7C5CBF",opacity:.6,animation:`bounce 1s ${i*0.2}s infinite`}}/>)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {aiError&&<div style={{padding:"10px 14px",background:"#FF4D6D11",border:"1.5px solid #FF4D6D44",borderRadius:12,color:"#FF4D6D",fontSize:12}}>{aiError}</div>}
+                </div>
+
+                {/* Input */}
+                <div style={{display:"flex",gap:8,paddingBottom:4}}>
+                  <input value={aiInput} onChange={e=>setAiInput(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&sendAiMessage()}
+                    placeholder={`Ask about ${ab?.name||"your baby"}...`}
+                    style={{flex:1,padding:"12px 16px",border:`2px solid ${T.bord}`,borderRadius:16,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg2,outline:"none"}}/>
+                  <button onClick={sendAiMessage} disabled={aiLoading||!aiInput.trim()}
+                    style={{width:48,height:48,borderRadius:16,background:aiLoading||!aiInput.trim()?"#ccc":"linear-gradient(135deg,#7C5CBF,#FF6B9D)",border:"none",color:"#fff",fontSize:20,cursor:aiLoading||!aiInput.trim()?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {"➤"}
+                  </button>
+                </div>
+              </div>
+            )}
+
 
             {view==="history"&&(
               <div>
@@ -2247,6 +2543,138 @@ const {useState,useEffect,useRef,useCallback}=React;
               </div>
             </div>
           )}
+
+
+          {/* BABY PROFILE SHEET */}
+          {profileBabyId&&(()=>{
+            const pb=babies.find(x=>x.id===profileBabyId);
+            if(!pb)return null;
+            const age=calcAge(profileDob||pb.dob);
+            const pred=predictWeight(weightLog);
+            return(
+              <div style={{position:"fixed",inset:0,background:"rgba(20,10,40,0.7)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400}}
+                onClick={e=>{if(e.target===e.currentTarget)setProfileBabyId(null);}}>
+                <div style={{background:T.bg2,borderRadius:"24px 24px 0 0",padding:"24px 24px calc(28px + env(safe-area-inset-bottom))",width:"100%",maxWidth:430,maxHeight:"90vh",overflowY:"auto"}}>
+                  <div style={{width:40,height:4,borderRadius:2,background:T.bord,margin:"0 auto 20px"}}/>
+                  <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+                    <div style={{width:44,height:44,borderRadius:"50%",background:pb.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:900,color:pb.color}}>{pb.name[0]}</div>
+                    <div>
+                      <div style={{fontSize:18,fontWeight:900,color:T.text}}>{pb.name}</div>
+                      {age&&<div style={{fontSize:12,color:T.text3}}>{age} old{profileDob||pb.dob?" · Born "+new Date(profileDob||pb.dob).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"}):""}</div>}
+                    </div>
+                  </div>
+
+                  {/* Profile fields */}
+                  <div style={{display:"flex",gap:10,marginBottom:12}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:4}}>{"Date of Birth"}</div>
+                      <input type="date" value={profileDob} onChange={e=>setProfileDob(e.target.value)}
+                        style={{width:"100%",padding:"10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box"}}/>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:4}}>{"Gender"}</div>
+                      <select value={profileGender} onChange={e=>setProfileGender(e.target.value)}
+                        style={{width:"100%",padding:"10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box"}}>
+                        <option value="">{"Not set"}</option>
+                        <option value="male">{"Male"}</option>
+                        <option value="female">{"Female"}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,marginBottom:6}}>{"Feeding Type"}</div>
+                  <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    {[["breastfed","🤱 Breast"],["formula","🍼 Formula"],["mixed","🔀 Mixed"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setProfileFeedingType(v)}
+                        style={{flex:1,padding:"9px 4px",background:profileFeedingType===v?"#7C5CBF":T.bg3,border:`2px solid ${profileFeedingType===v?"#7C5CBF":T.bord}`,borderRadius:12,color:profileFeedingType===v?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                    <button onClick={()=>setProfilePremature(p=>!p)}
+                      style={{width:24,height:24,borderRadius:6,background:profilePremature?"#7C5CBF":T.bg3,border:`2px solid ${profilePremature?"#7C5CBF":T.bord}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {profilePremature&&<span style={{color:"#fff",fontSize:14}}>{"✓"}</span>}
+                    </button>
+                    <span style={{fontSize:13,color:T.text2,fontWeight:600}}>{"Premature baby"}</span>
+                    {profilePremature&&<input type="number" value={profileGestWeeks} onChange={e=>setProfileGestWeeks(e.target.value)} placeholder="Weeks at birth"
+                      style={{flex:1,padding:"8px",border:`2px solid ${T.bord}`,borderRadius:10,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3}}/>}
+                  </div>
+
+                  <button onClick={async()=>{
+                    const updated={...pb};
+                    if(profileDob)updated.dob=profileDob;
+                    if(profileGender)updated.gender=profileGender;
+                    updated.feedingType=profileFeedingType;
+                    updated.premature=profilePremature;
+                    if(profilePremature&&profileGestWeeks)updated.gestationalWeeks=Number(profileGestWeeks);
+                    await saveBaby(updated);
+                  }} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#7C5CBF,#A78BFA)",border:"none",borderRadius:14,color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",marginBottom:20}}>
+                    {"Save Profile"}
+                  </button>
+
+                  {/* Weight Log */}
+                  <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:12}}>{"⚖️ Weight Log"}</div>
+
+                  {/* Predicted weight */}
+                  {pred&&(
+                    <div style={{background:"#7C5CBF11",border:"1.5px solid #7C5CBF33",borderRadius:14,padding:"12px 14px",marginBottom:14}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#7C5CBF",textTransform:"uppercase",letterSpacing:.8,marginBottom:4}}>{"Predicted in 2 weeks"}</div>
+                      <div style={{fontSize:22,fontWeight:900,color:T.text}}>{"~"}{pred.predicted}{"kg"}</div>
+                      <div style={{fontSize:11,color:T.text3,marginTop:2}}>{"Based on +"}{pred.weeklyGain}{"g/week avg gain · current "}{pred.lastWeight}{"kg"}</div>
+                    </div>
+                  )}
+
+                  {/* Add weight entry */}
+                  <div style={{display:"flex",gap:8,marginBottom:14}}>
+                    <input type="number" step="0.01" value={weightLogEntry} onChange={e=>setWeightLogEntry(e.target.value)} placeholder="Current weight (kg)"
+                      style={{flex:1,padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3}}/>
+                    <button onClick={async()=>{
+                      if(!weightLogEntry)return;
+                      const entry={weight:Number(weightLogEntry),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString()};
+                      await addWeightEntry(profileBabyId,entry);
+                      await saveBaby({...pb,currentWeight:Number(weightLogEntry)});
+                      setWeightLogEntry("");
+                      const log=await getWeightLog(profileBabyId);setWeightLog(log);
+                    }} style={{padding:"10px 16px",background:"#7C5CBF",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                      {"+ Log"}
+                    </button>
+                  </div>
+
+                  {/* Weight history */}
+                  {weightLog.map(entry=>(
+                    <div key={entry.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:T.bg3,borderRadius:12,marginBottom:8}}>
+                      {editWeightId===entry.id?(
+                        <>
+                          <input type="number" step="0.01" value={editWeightVal} onChange={e=>setEditWeightVal(e.target.value)}
+                            style={{flex:1,padding:"6px 10px",border:`2px solid #7C5CBF`,borderRadius:8,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg2}}/>
+                          <button onClick={async()=>{
+                            await updateWeightEntry(profileBabyId,entry.id,{...entry,weight:Number(editWeightVal)});
+                            setEditWeightId(null);
+                            const log=await getWeightLog(profileBabyId);setWeightLog(log);
+                          }} style={{padding:"6px 12px",background:"#34D399",border:"none",borderRadius:8,color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{"Save"}</button>
+                          <button onClick={()=>setEditWeightId(null)} style={{padding:"6px 10px",background:T.bg2,border:"none",borderRadius:8,color:T.text3,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{"✕"}</button>
+                        </>
+                      ):(
+                        <>
+                          <div style={{flex:1}}>
+                            <span style={{fontSize:15,fontWeight:800,color:T.text}}>{entry.weight}{"kg"}</span>
+                            <span style={{fontSize:11,color:T.text3,marginLeft:8}}>{new Date(entry.date).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"})}</span>
+                          </div>
+                          <button onClick={()=>{setEditWeightId(entry.id);setEditWeightVal(String(entry.weight));}} style={{padding:"5px 10px",background:"transparent",border:"none",color:T.text3,fontSize:13,cursor:"pointer"}}>{"✏️"}</button>
+                          <button onClick={async()=>{await deleteWeightEntry(profileBabyId,entry.id);const log=await getWeightLog(profileBabyId);setWeightLog(log);}} style={{padding:"5px 10px",background:"transparent",border:"none",color:"#FF4D6D",fontSize:13,cursor:"pointer"}}>{"🗑"}</button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  {weightLog.length===0&&<div style={{textAlign:"center",color:T.text3,fontSize:13,padding:"16px 0"}}>{"No weight entries yet — add the first one above"}</div>}
+
+                  <button onClick={()=>setProfileBabyId(null)} style={{width:"100%",padding:"12px",background:T.bg3,border:"none",borderRadius:14,color:T.text2,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",marginTop:8}}>{"Close"}</button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* SETTINGS SHEET */}
           {showSettings&&(

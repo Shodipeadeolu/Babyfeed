@@ -757,14 +757,12 @@ const {useState,useEffect,useRef,useCallback}=React;
 
       useEffect(()=>{getOrCreateInviteCode().then(setCode);},[]);
 
-      // Load connected members
+      // Load connected members — query users collection by familyId
+      // This works for ALL users including those who joined before the members map existed
       useEffect(()=>{
         if(!familyId||!db)return;
-        // Get family doc to find member UIDs
-        return db.collection("families").doc(familyId).onSnapshot(snap=>{
-          const data=snap.data()||{};
-          const mems=data.members||{};
-          const list=Object.entries(mems).map(([uid,info])=>({uid,...info}));
+        return db.collection("users").where("familyId","==",familyId).onSnapshot(snap=>{
+          const list=snap.docs.map(d=>({uid:d.id,...d.data()}));
           setMembers(list);
         });
       },[familyId]);
@@ -775,11 +773,6 @@ const {useState,useEffect,useRef,useCallback}=React;
       }
 
       async function removeMember(uid){
-        // Remove from family members map
-        const update={};
-        update[`members.${uid}`]=firebase.firestore.FieldValue.delete();
-        await db.collection("families").doc(familyId).update(update);
-        // Clear their familyId
         await db.collection("users").doc(uid).update({familyId:null,role:null});
         setConfirmRemove(null);
       }

@@ -824,10 +824,10 @@ const {useState,useEffect,useRef,useCallback}=React;
                 {members.map(m=>(
                   <div key={m.uid} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:T.bg3,borderRadius:14,marginBottom:8}}>
                     <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#7C5CBF,#FF6B9D)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:900,flexShrink:0}}>
-                      {(m.name||m.email||"?")[0].toUpperCase()}
+                      {(m.displayName||m.name||m.email||"?")[0].toUpperCase()}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name||m.email||"Unknown"}</div>
+                      <div style={{fontSize:13,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.displayName||m.name||m.email||m.uid?.slice(0,8)||"Unknown"}</div>
                       <div style={{fontSize:11,color:T.text3}}>{m.role==="owner"?"Owner":"Partner"}</div>
                     </div>
                     {isOwner&&m.uid!==user.uid&&(
@@ -1478,8 +1478,9 @@ const {useState,useEffect,useRef,useCallback}=React;
       },[]);
       useEffect(()=>{
         if(!("serviceWorker" in navigator))return;
-        navigator.serviceWorker.getRegistration().then(reg=>{
-          if(!reg)return;
+        navigator.serviceWorker.ready.then(reg=>{
+          // Check immediately for a waiting SW
+          if(reg.waiting)setUpdateReady(true);
           reg.addEventListener("updatefound",()=>{
             const newSW=reg.installing;
             if(!newSW)return;
@@ -1489,8 +1490,8 @@ const {useState,useEffect,useRef,useCallback}=React;
               }
             });
           });
-          // Check for existing waiting SW
-          if(reg.waiting&&navigator.serviceWorker.controller)setUpdateReady(true);
+          // Poll for updates every 60s
+          setInterval(()=>reg.update(),60000);
         });
         let refreshing=false;
         navigator.serviceWorker.addEventListener("controllerchange",()=>{
@@ -1508,6 +1509,17 @@ const {useState,useEffect,useRef,useCallback}=React;
       useEffect(()=>{window.__logsRef=logs;},[logs]);
       useEffect(()=>{window.__dismissedHungryRef=dismissedHungry;},[dismissedHungry]);
       // Push subscription — wired here where both user and familyId are available
+      // Backfill displayName/email for existing users on each login
+      useEffect(()=>{
+        if(!familyId||!user?.uid)return;
+        if(user.displayName||user.email){
+          db.collection("users").doc(user.uid).set(
+            {displayName:user.displayName||"",email:user.email||""},
+            {merge:true}
+          ).catch(()=>{});
+        }
+      },[familyId,user?.uid]);
+
       useEffect(()=>{
         if(!familyId||!user?.uid)return;
         if(!("serviceWorker" in navigator)||!("PushManager" in window))return;
@@ -1612,7 +1624,7 @@ const {useState,useEffect,useRef,useCallback}=React;
           if(snap.empty){setLinkError("Code not found. Check and try again.");setLinkLoading(false);return;}
           const fid=snap.docs[0].id;
           if(fid===user.uid){setLinkError("That's your own invite code!");setLinkLoading(false);return;}
-          await db.collection("users").doc(user.uid).set({familyId:fid,role:"partner",joinedAt:new Date().toISOString()},{merge:true});
+          await db.collection("users").doc(user.uid).set({familyId:fid,role:"partner",joinedAt:new Date().toISOString(),displayName:user.displayName||"",email:user.email||""},{merge:true});
           setLinkSuccess(true);
           setTimeout(()=>{setShowLinkPartner(false);setLinkSuccess(false);setLinkCode("");window.location.reload();},1500);
         }catch(e){setLinkError(e.message);setLinkLoading(false);}
@@ -1635,7 +1647,7 @@ const {useState,useEffect,useRef,useCallback}=React;
         // Create family doc if first baby (owner)
         if(babies.length===0&&familyId){
           await db.collection("families").doc(familyId).set({ownerId:user.uid,createdAt:new Date().toISOString()},{merge:true});
-          await db.collection("users").doc(user.uid).set({familyId,role:"owner"},{merge:true});
+          await db.collection("users").doc(user.uid).set({familyId,role:"owner",displayName:user.displayName||"",email:user.email||""},{merge:true});
         }
         setNewName("");setAddingBaby(false);setActiveBabyId(id);setView("log");
       }

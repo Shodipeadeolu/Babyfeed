@@ -1,4 +1,4 @@
-const CACHE = 'babyfeed-v10';
+const CACHE = 'babyfeed-v11';
 const ASSETS = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', e => {

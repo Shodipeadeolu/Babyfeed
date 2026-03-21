@@ -2777,24 +2777,35 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                 {[
                   {icon:"🌙",label:dark?"Switch to Light Mode":"Switch to Dark Mode",action:()=>{toggleTheme();}},
                   {icon:"🤝",label:"Invite Care Team",action:()=>{setShowSettings(false);setShowPartner(true);}},
-                  {icon:"🔄",label:updateReady?"Update Available — tap to install":"Check for Updates",action:()=>{
+                  {icon:"🔄",label:updateReady?"Update Available — tap to install":"Check for Updates",action:async()=>{
                     if(updateReady){applyUpdate();return;}
-                    if("serviceWorker" in navigator){
-                      navigator.serviceWorker.ready.then(reg=>{
-                        reg.update().then(()=>{
-                          if(reg.waiting){setUpdateReady(true);}
-                          else{
-                            // Flash "up to date" message
-                            const el=document.createElement("div");
-                            el.style.cssText="position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:#34D399;color:#fff;padding:10px 20px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999;";
-                            el.textContent="✓ You're on the latest version";
-                            document.body.appendChild(el);
-                            setTimeout(()=>el.remove(),2500);
+                    if(!("serviceWorker" in navigator)){setShowSettings(false);return;}
+                    setShowSettings(false);
+                    const reg=await navigator.serviceWorker.ready;
+                    // Check if already waiting
+                    if(reg.waiting){setUpdateReady(true);return;}
+                    // Fetch latest SW from server
+                    await reg.update();
+                    // If now waiting, show update
+                    if(reg.waiting){setUpdateReady(true);return;}
+                    // If installing, wait for it to reach installed
+                    if(reg.installing){
+                      await new Promise(resolve=>{
+                        reg.installing.addEventListener("statechange",function handler(e){
+                          if(e.target.state==="installed"){
+                            this.removeEventListener("statechange",handler);
+                            resolve();
                           }
                         });
                       });
+                      if(reg.waiting){setUpdateReady(true);return;}
                     }
-                    setShowSettings(false);
+                    // Truly up to date
+                    const el=document.createElement("div");
+                    el.style.cssText="position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:#34D399;color:#fff;padding:10px 20px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999;";
+                    el.textContent="✓ You're on the latest version";
+                    document.body.appendChild(el);
+                    setTimeout(()=>el.remove(),2500);
                   },highlight:updateReady},
                   {icon:"🚪",label:"Sign Out",action:()=>{setShowSettings(false);auth.signOut();},danger:true},
                 ].map(item=>(

@@ -1646,21 +1646,19 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
         setAiMessages(newMsgs);setAiInput("");setAiLoading(true);setAiError("");
         const babyCtx=buildBabyContext(activeBabyId);
         try{
-          const resp=await fetch("https://api.anthropic.com/v1/messages",{
+          const resp=await fetch("https://us-central1-babyfeed-98971.cloudfunctions.net/askAI",{
             method:"POST",
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify({
-              model:"claude-haiku-4-5-20251001",
-              max_tokens:1000,
-              system:`You are BabyFeed AI, a warm and knowledgeable assistant helping parents track and understand their baby's health. You have access to this baby's actual feeding, sleep and diaper data. Be specific, evidence-based and reassuring. For serious medical concerns, always advise consulting a paediatrician. Never diagnose. End each response with a one-line disclaimer: "Always consult your paediatrician for medical decisions."
-
-Current baby data:
-${babyCtx}`,
-              messages:newMsgs.map(m=>({role:m.role,content:m.content}))
+              messages:newMsgs,
+              systemPrompt:`You are BabyFeed AI, a warm and knowledgeable assistant helping parents track and understand their baby's health. You have access to this baby's actual feeding, sleep and diaper data. Be specific, evidence-based and reassuring. For serious medical concerns, always advise consulting a paediatrician. Never diagnose. End each response with a one-line disclaimer: "Always consult your paediatrician for medical decisions."\n\nCurrent baby data:\n${babyCtx}`,
+              uid:user.uid,
+              plan:aiPlan
             })
           });
           const data=await resp.json();
-          const reply=data.content?.[0]?.text||"Sorry, I couldn't generate a response.";
+          if(!resp.ok)throw new Error(data.error||"AI error");
+          const reply=data.reply||"Sorry, I couldn't generate a response.";
           const aiMsg={role:"assistant",content:reply,timestamp:new Date().toISOString()};
           const finalMsgs=[...newMsgs,aiMsg];
           setAiMessages(finalMsgs);
@@ -1672,10 +1670,8 @@ ${babyCtx}`,
             const ref=await db.collection(`users/${user.uid}/aiChats`).add({babyId:activeBabyId,title,messages:finalMsgs,createdAt:new Date().toISOString()});
             setAiChatId(ref.id);
           }
-          // Update usage count
-          const today=new Date().toDateString();
-          const newCount=aiMsgsToday+1;setAiMsgsToday(newCount);
-          await db.collection("users").doc(user.uid).set({aiMsgsToday:newCount,aiResetDate:today},{merge:true});
+          // Update local usage count from CF response
+          const newCount=(data.usage?.used)||aiMsgsToday+1;setAiMsgsToday(newCount);
         }catch(e){setAiError("Failed to get response. Check your connection.");}
         setAiLoading(false);
       }
@@ -1771,17 +1767,26 @@ ${babyCtx}`,
       const gr={};sl.forEach(l=>{const k=fmtDate(l.timestamp);if(!gr[k])gr[k]=[];gr[k].push(l);});
 
       // Count urgent insights for badge
-      React.useEffect(()=>{
+      // Restore active timers from Firestore (survives page reload + iOS background kill)
+      function restoreActiveTimers(){
         if(!familyId)return;
         db.collection(`families/${familyId}/activeTimers`).get().then(snap=>{
           const sl={};const su={};
           snap.forEach(doc=>{const d=doc.data();
-            if(d.type==='sleep')sl[d.babyId]={startMs:d.startMs,babyId:d.babyId};
-            if(d.type==='sucking')su[d.babyId]={startMs:d.startMs,babyId:d.babyId};
+            if(d.type==='sleep')sl[d.babyId]={startMs:Number(d.startMs),babyId:d.babyId};
+            if(d.type==='sucking')su[d.babyId]={startMs:Number(d.startMs),babyId:d.babyId};
           });
           if(Object.keys(sl).length>0)setSleepActive(sl);
           if(Object.keys(su).length>0)setSuckingActive(su);
         }).catch(()=>{});
+      }
+      React.useEffect(()=>{
+        if(!familyId)return;
+        restoreActiveTimers();
+        // Re-restore when page becomes visible again (handles iOS background kill)
+        const onVisible=()=>{if(document.visibilityState==='visible')restoreActiveTimers();};
+        document.addEventListener('visibilitychange',onVisible);
+        return()=>document.removeEventListener('visibilitychange',onVisible);
       },[familyId]);
       const urgentCount=computeInsights(babies,logs,dismissedHungry,dismissedIntake).filter(i=>i.urgent).length;
       function dismissIntake(babyId){setDismissedIntake(d=>({...d,[babyId]:true}));}
@@ -2179,6 +2184,37 @@ ${babyCtx}`,
                     </button>
                   ))}
                 </div>
+                {(()=>{
+                  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+                  const todayDiapers=activities.filter(a=>a.babyId===activeBabyId&&a.type==="diaper"&&new Date(a.startTime)>=todayStart);
+                  if(todayDiapers.length===0)return null;
+                  const wet=todayDiapers.filter(a=>a.diaperType==="wet").length;
+                  const dirty=todayDiapers.filter(a=>a.diaperType==="dirty").length;
+                  const mixed=todayDiapers.filter(a=>a.diaperType==="mixed").length;
+                  const total=todayDiapers.length;
+                  const maxCount=Math.max(wet,dirty,mixed,1);
+                  const types=[
+                    {label:"💧 Wet",count:wet,color:"#60A5FA"},
+                    {label:"💩 Dirty",count:dirty,color:"#A78BFA"},
+                    {label:"🔀 Mixed",count:mixed,color:"#34D399"},
+                  ].filter(t=>t.count>0);
+                  return(
+                    <div style={{marginTop:12,background:T.bg2,borderRadius:14,padding:"12px 14px"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:T.text3,textTransform:"uppercase",letterSpacing:.8,marginBottom:10}}>{"Today · "}{total}{" diapers"}</div>
+                      {types.map(t=>(
+                        <div key={t.label} style={{marginBottom:8}}>
+                          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                            <span style={{fontSize:12,color:T.text2,fontWeight:600}}>{t.label}</span>
+                            <span style={{fontSize:12,color:t.color,fontWeight:800}}>{t.count}</span>
+                          </div>
+                          <div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:(t.count/maxCount*100)+"%",background:t.color,borderRadius:6,transition:"width 0.4s"}}/>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
               </>
             )}

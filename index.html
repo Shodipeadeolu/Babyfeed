@@ -530,97 +530,158 @@ const {useState,useEffect,useRef,useCallback}=React;
     }
 
     // ── INSIGHTS ENGINE ───────────────────────────────────────
-    function computeInsights(babies,logs,dismissedHungry={},dismissedIntake={}){
+    function computeInsights(babies,logs,activities,dismissedHungry={},dismissedIntake={}){
       const now=Date.now();
       const insights=[];
       const today=new Date().toDateString();
       const yesterday=new Date(now-86400000).toDateString();
 
       babies.forEach(b=>{
+        const feedingType=b.feedingType||"mixed";
+        const isBreastfedOnly=feedingType==="breastfed";
         const bl=logs.filter(l=>l.babyId===b.id);
         const todayLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===today);
         const yestLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===yesterday);
         const week7=bl.filter(l=>new Date(l.timestamp).getTime()>=now-7*86400000);
         const week14=bl.filter(l=>new Date(l.timestamp).getTime()>=now-14*86400000&&new Date(l.timestamp).getTime()<now-7*86400000);
 
+        // Sucking sessions for this baby
+        const suckingActs=(activities||[]).filter(a=>a.babyId===b.id&&a.type==="sucking");
+        const todaySucking=suckingActs.filter(a=>new Date(a.startTime||a.endTime).toDateString()===today);
+        const todaySuckingSecs=todaySucking.reduce((s,a)=>s+(a.durationSecs||0),0);
+        const todaySuckingMins=Math.round(todaySuckingSecs/60);
+        const lastSucking=suckingActs.sort((a,c)=>new Date(c.endTime||c.startTime)-new Date(a.endTime||a.startTime))[0];
+        const lastSuckingMs=lastSucking?new Date(lastSucking.endTime||lastSucking.startTime).getTime():0;
+
         const todayTotal=todayLogs.reduce((s,l)=>s+l.amount,0);
         const yestTotal=yestLogs.reduce((s,l)=>s+l.amount,0);
         const avg7=week7.length>0?Math.round(week7.reduce((s,l)=>s+l.amount,0)/7):0;
         const avg14prev=week14.length>0?Math.round(week14.reduce((s,l)=>s+l.amount,0)/7):0;
 
-        // Daily summary
-        insights.push({
-          babyId:b.id,type:"daily",
-          title:`${b.name}'s Day`,
-          value:`${todayTotal}ml`,
-          sub:`${todayLogs.length} feeds today`,
-          icon:"📊",color:b.color,
-          detail:yestTotal>0?`${todayTotal>yestTotal?"↑":"↓"} vs ${yestTotal}ml yesterday`:null
-        });
+        // ── Daily summary ──────────────────────────────────────────────
+        if(isBreastfedOnly){
+          // For exclusively breastfed: show sessions not ml
+          const suckingLabel=todaySuckingMins>0?`${todaySuckingMins}m sucking`:"No sessions yet";
+          insights.push({
+            babyId:b.id,type:"daily",
+            title:`${b.name}'s Day`,
+            value:`${todaySucking.length} session${todaySucking.length!==1?"s":""}`,
+            sub:suckingLabel,
+            icon:"📊",color:b.color,
+            detail:null
+          });
+        } else {
+          // Mixed or formula: show ml + sucking duration if any
+          const suckingSub=todaySuckingMins>0?` · ${todaySuckingMins}m sucking`:"";
+          insights.push({
+            babyId:b.id,type:"daily",
+            title:`${b.name}'s Day`,
+            value:`${todayTotal}ml`,
+            sub:`${todayLogs.length} feeds today${suckingSub}`,
+            icon:"📊",color:b.color,
+            detail:yestTotal>0?`${todayTotal>yestTotal?"↑":"↓"} vs ${yestTotal}ml yesterday`:null
+          });
+        }
 
-        // Low intake alert — time-aware (no early AM false alarms)
-        if(avg7>0&&todayLogs.length>0){
+        // ── Low intake alert ───────────────────────────────────────────
+        if(!isBreastfedOnly&&avg7>0&&todayLogs.length>0){
           const nowHour=new Date(now).getHours();
           const pct=Math.round((todayTotal/avg7)*100);
+          const hasSuckingToday=todaySuckingMins>=5;
           const isWatch=nowHour>=8&&nowHour<12&&pct<50;
           const isAlert=nowHour>=12&&nowHour<20&&pct<40;
           const isEveAlert=nowHour>=20&&pct<70;
           if((isAlert||isEveAlert)&&!(dismissedIntake&&dismissedIntake[b.id])){
-            insights.push({babyId:b.id,type:"alert",title:"Low Intake Alert",
-              value:`${todayTotal}ml`,sub:`${pct}% of usual ${avg7}ml/day`,
-              icon:"⚠️",color:"#FF4D6D",detail:`${b.name} is drinking less than usual today`,
-              urgent:true,dismissable:true});
+            // If sucking today, soften the alert
+            if(hasSuckingToday){
+              insights.push({babyId:b.id,type:"watch",title:"Low Bottle Intake",
+                value:`${todayTotal}ml bottle`,
+                sub:`+ ${todaySuckingMins}m breastfeeding today`,
+                icon:"ℹ️",color:"#FBBF24",
+                detail:`${b.name}'s bottle intake is low but has been breastfeeding for ${todaySuckingMins}m today`,
+                urgent:false,dismissable:true});
+            } else {
+              insights.push({babyId:b.id,type:"alert",title:"Low Intake Alert",
+                value:`${todayTotal}ml`,sub:`${pct}% of usual ${avg7}ml/day`,
+                icon:"⚠️",color:"#FF4D6D",detail:`${b.name} is drinking less than usual today`,
+                urgent:true,dismissable:true});
+            }
           } else if(isWatch&&!(dismissedIntake&&dismissedIntake[b.id])){
             insights.push({babyId:b.id,type:"watch",title:"Worth Monitoring",
-              value:`${todayTotal}ml so far`,sub:`${pct}% of usual — still early`,
+              value:hasSuckingToday?`${todayTotal}ml + ${todaySuckingMins}m sucking`:`${todayTotal}ml so far`,
+              sub:hasSuckingToday?`${pct}% bottle + breastfeeding today`:`${pct}% of usual — still early`,
               icon:"👀",color:"#FBBF24",detail:`${b.name}'s intake is a bit low but it's still early`,
               urgent:false,dismissable:true});
           }
         }
 
-        // Next hunger prediction — weighted by both feed amount AND time interval
+        // ── Next hunger prediction ─────────────────────────────────────
         const sorted=[...bl].sort((a,c)=>new Date(a.timestamp)-new Date(c.timestamp));
         const intervals=[];
         for(let i=1;i<sorted.length;i++)intervals.push((new Date(sorted[i].timestamp)-new Date(sorted[i-1].timestamp))/60000);
-        const lastFeed=bl.sort((a,c)=>new Date(c.timestamp)-new Date(a.timestamp))[0];
+        const lastMlFeed=bl.sort((a,c)=>new Date(c.timestamp)-new Date(a.timestamp))[0];
 
-        if(intervals.length>2&&lastFeed){
-          // Use last 10 feeds for calculations
+        // Use most recent of last ml feed OR last sucking session
+        const lastMlMs=lastMlFeed?new Date(lastMlFeed.timestamp).getTime():0;
+        const lastFeedMs=Math.max(lastMlMs,lastSuckingMs);
+        const lastFeedTime=lastFeedMs>0?new Date(lastFeedMs).toISOString():null;
+
+        if(isBreastfedOnly){
+          // For exclusively breastfed: predict from sucking sessions only
+          const suckingSorted=[...suckingActs].sort((a,c)=>new Date(a.startTime)-new Date(c.startTime));
+          const suckIntervals=[];
+          for(let i=1;i<suckingSorted.length;i++){
+            suckIntervals.push((new Date(suckingSorted[i].startTime)-new Date(suckingSorted[i-1].startTime))/60000);
+          }
+          if(suckIntervals.length>1&&lastSucking){
+            const avgSuckInterval=Math.round(suckIntervals.slice(-5).reduce((s,x)=>s+x,0)/Math.min(suckIntervals.length,5));
+            const dismissedAt=dismissedHungry&&dismissedHungry[b.id];
+            const startMs=dismissedAt&&dismissedAt>lastSuckingMs?dismissedAt:lastSuckingMs;
+            const nextMs=startMs+avgSuckInterval*60000;
+            const diffMs=nextMs-now;
+            const label=diffMs<0?"Hungry now!":countdown(diffMs);
+            const h=Math.floor(avgSuckInterval/60),m=avgSuckInterval%60;
+            const intervalLabel=h>0?`${h}h${m>0?" "+m+"m":""}`:`${m}m`;
+            insights.push({
+              babyId:b.id,type:"prediction",
+              title:"Next Hunger",
+              value:label,
+              sub:`${intervalLabel} avg interval · last feed ${timeSince(lastSucking.endTime||lastSucking.startTime)}`,
+              icon:"🔮",color:"#A78BFA",
+              detail:diffMs<0?`${b.name} is likely hungry!`:`Predicted at ${fmt(new Date(nextMs).toISOString())}`,
+              urgent:diffMs<0
+            });
+          }
+        } else if(intervals.length>2&&lastFeedTime){
+          // Mixed/formula: use amount-weighted interval from ml feeds
+          // but use lastFeedMs (which may be a sucking session) as the start time
           const recent10=sorted.slice(-10);
           const recent10intervals=intervals.slice(-9);
-
-          // Step 1: Amount-weighted average interval (larger feeds pull interval longer)
           const totalWeight=recent10.slice(1).reduce((s,f)=>s+(f.amount||0),0)||1;
           const weightedInterval=recent10intervals.length>0
             ? recent10intervals.reduce((s,iv,i)=>s+iv*(recent10[i+1]?.amount||60),0)/totalWeight
             : intervals.slice(-5).reduce((s,x)=>s+x,0)/Math.min(intervals.length,5);
-
-          // Step 2: Fullness factor — how big was the last feed vs average
           const avgAmount=recent10.reduce((s,f)=>s+(f.amount||0),0)/recent10.length||60;
-          const lastAmount=lastFeed.amount||60;
+          const lastAmount=lastMlFeed?.amount||60;
           const fullnessFactor=Math.min(1.5,Math.max(0.5,lastAmount/avgAmount));
-
-          // Step 3: Recency factor — nudge prediction earlier as time passes
-          const timeSinceLastFeed=(now-new Date(lastFeed.timestamp).getTime())/60000;
-          const recencyFactor=Math.min(1.0,Math.max(0.7,1-(timeSinceLastFeed/weightedInterval)*0.3));
-
-          // Step 4: Combined adjusted interval
+          const timeSinceLastFeedMin=(now-lastFeedMs)/60000;
+          const recencyFactor=Math.min(1.0,Math.max(0.7,1-(timeSinceLastFeedMin/weightedInterval)*0.3));
           const adjustedInterval=Math.round(weightedInterval*fullnessFactor*recencyFactor);
-
           const dismissedAt=dismissedHungry&&dismissedHungry[b.id];
-          const startMs=dismissedAt&&dismissedAt>new Date(lastFeed.timestamp).getTime()
-            ? dismissedAt
-            : new Date(lastFeed.timestamp).getTime();
+          const startMs=dismissedAt&&dismissedAt>lastFeedMs?dismissedAt:lastFeedMs;
           const nextMs=startMs+adjustedInterval*60000;
           const diffMs=nextMs-now;
           const label=diffMs<0?"Hungry now!":countdown(diffMs);
           const h=Math.floor(adjustedInterval/60),m=adjustedInterval%60;
           const intervalLabel=h>0?`${h}h${m>0?" "+m+"m":""}`:`${m}m`;
+          const lastFeedLabel=lastSuckingMs>lastMlMs
+            ?`breastfed ${timeSince(lastSucking.endTime||lastSucking.startTime)}`
+            :`${lastAmount}ml · ${timeSince(lastMlFeed.timestamp)}`;
           insights.push({
             babyId:b.id,type:"prediction",
             title:"Next Hunger",
             value:label,
-            sub:`${intervalLabel} avg · last feed ${lastAmount}ml · ${timeSince(lastFeed.timestamp)}`,
+            sub:`${intervalLabel} avg · last feed: ${lastFeedLabel}`,
             icon:"🔮",color:"#A78BFA",
             detail:diffMs<0?`${b.name} is likely hungry!`:`Predicted at ${fmt(new Date(nextMs).toISOString())}`,
             urgent:diffMs<0
@@ -661,11 +722,11 @@ const {useState,useEffect,useRef,useCallback}=React;
     }
 
     // ── INSIGHTS VIEW ─────────────────────────────────────────
-    function InsightsView({babies,logs,onLogFeed,onDismissHungry,dismissedHungry={},dismissedIntake={}}){
+    function InsightsView({babies,logs,activities,onLogFeed,onDismissHungry,dismissedHungry={},dismissedIntake={}}){
       const T=useT();
       const [expanded,setExpanded]=useState(null);
       const [hungryAction,setHungryAction]=useState(null);
-      const insights=computeInsights(babies,logs,dismissedHungry,dismissedIntake);
+      const insights=computeInsights(babies,logs,activities,dismissedHungry,dismissedIntake);
       // For each baby, compute avg interval (ms) so dismiss expires exactly when next feed is due
       function avgIntervalMs(babyId){
         const bl=[...logs].filter(l=>l.babyId===babyId).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
@@ -761,6 +822,7 @@ const {useState,useEffect,useRef,useCallback}=React;
     function DashboardView({babies,logs,activities}){
       const T=useT();
       const [filterMode,setFilterMode]=useState("today");
+      const [dashBabyFilter,setDashBabyFilter]=useState("all");
       const [customFrom,setCustomFrom]=useState("");
       const [customTo,setCustomTo]=useState("");
       const [showCustom,setShowCustom]=useState(false);
@@ -787,7 +849,8 @@ const {useState,useEffect,useRef,useCallback}=React;
         rl=customFrom&&customTo?customFrom+" – "+customTo:"Custom";
       }
 
-      const recent=logs.filter(l=>{const ts=new Date(l.timestamp).getTime();return ts>=rangeStart&&ts<=rangeEnd;});
+      const filteredBabies=dashBabyFilter==="all"?babies:babies.filter(b=>b.id===dashBabyFilter);
+      const recent=logs.filter(l=>{const ts=new Date(l.timestamp).getTime();return ts>=rangeStart&&ts<=rangeEnd&&(dashBabyFilter==="all"||l.babyId===dashBabyFilter);});
       const gm=range<=14?"day":range<=90?"week":"month";
       function gk(ts){const d=new Date(ts);if(gm==="day")return d.toDateString();if(gm==="week"){const w=new Date(d);w.setDate(d.getDate()-d.getDay());return w.toDateString();}return`${d.getFullYear()}-${d.getMonth()}`;}
       function gl(k){if(gm==="day")return new Date(k).toLocaleDateString([],{weekday:"short"});if(gm==="week")return new Date(k).toLocaleDateString([],{month:"short",day:"numeric"});const[y,m]=k.split("-");return new Date(+y,+m).toLocaleDateString([],{month:"short",year:"2-digit"});}
@@ -829,8 +892,22 @@ const {useState,useEffect,useRef,useCallback}=React;
               </div>
             )}
           </div>
+          {babies.length>1&&(
+            <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+              <button onClick={()=>setDashBabyFilter("all")}
+                style={{padding:"7px 14px",background:dashBabyFilter==="all"?"#7C5CBF":T.bg2,border:"none",borderRadius:20,color:dashBabyFilter==="all"?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                {"All"}
+              </button>
+              {babies.map(b=>(
+                <button key={b.id} onClick={()=>setDashBabyFilter(b.id)}
+                  style={{padding:"7px 14px",background:dashBabyFilter===b.id?b.color:T.bg2,border:"none",borderRadius:20,color:dashBabyFilter===b.id?"#fff":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {b.name}
+                </button>
+              ))}
+            </div>
+          )}
           <div style={{display:"flex",gap:10,marginBottom:14}}>
-            {babies.map(b=>{const s=stats(b.id);return(<div key={b.id} style={{flex:1,background:T.bg2,borderRadius:18,padding:"14px",borderTop:`4px solid ${b.color}`}}><div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:8}}>{b.name}</div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{s.avg}<span style={{fontSize:11,color:T.text3,fontWeight:500}}>ml/day</span></div><div style={{fontSize:11,color:T.text3,marginTop:4}}>{s.feeds}{" feeds · ~"}{s.apf}{"ml each"}</div>{s.ai>0&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>avg every {s.ai>=60?`${Math.floor(s.ai/60)}h ${s.ai%60}m`:`${s.ai}m`}</div>}</div>);})}
+            {filteredBabies.map(b=>{const s=stats(b.id);return(<div key={b.id} style={{flex:1,background:T.bg2,borderRadius:18,padding:"14px",borderTop:`4px solid ${b.color}`}}><div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:8}}>{b.name}</div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{s.avg}<span style={{fontSize:11,color:T.text3,fontWeight:500}}>ml/day</span></div><div style={{fontSize:11,color:T.text3,marginTop:4}}>{s.feeds}{" feeds · ~"}{s.apf}{"ml each"}</div>{s.ai>0&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>avg every {s.ai>=60?`${Math.floor(s.ai/60)}h ${s.ai%60}m`:`${s.ai}m`}</div>}</div>);})}
           </div>
           <C ch={<><SectionTitle t={`${gm==="day"?"Daily":gm==="week"?"Weekly":"Monthly"} Intake — ${rl}`}/><div style={{display:"flex",alignItems:"flex-end",gap:gm==="month"?6:3,height:120,overflowX:"auto",paddingBottom:2}}>{cd.map((d,i)=><div key={i} style={{flexShrink:0,minWidth:gm==="day"?0:36,flex:gm==="day"?1:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><div style={{fontSize:8,color:T.text3,fontWeight:600,marginBottom:2}}>{d.total>0?d.total:""}</div><div style={{width:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",height:90,gap:1}}>{babies.map(b=>{const h=d[b.id]>0?Math.max(4,Math.round(d[b.id]/mb*90)):0;return h>0?<div key={b.id} style={{width:"100%",height:h,background:b.color,borderRadius:4,opacity:.85}}/>:null;})}</div><div style={{fontSize:8,color:T.text3,fontWeight:700,marginTop:4,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div></div>)}</div><div style={{display:"flex",gap:12,marginTop:12,justifyContent:"center"}}>{babies.map(b=><div key={b.id} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:3,background:b.color}}/><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{b.name}</span></div>)}</div></>}/>
           <C ch={<><SectionTitle t="Milk Type Breakdown"/>{babies.map(b=>{const bd=mkbd(b.id);return bd.length===0?<div key={b.id} style={{fontSize:12,color:T.text3,marginBottom:12}}>{b.name}: no data</div>:(<div key={b.id} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:b.color,marginBottom:8}}>{b.name}</div>{bd.map(m=><div key={m.value} style={{marginBottom:6}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{m.label}</span><span style={{fontSize:11,color:m.color,fontWeight:800}}>{m.display||(m.p+"% · "+m.a+"ml")}</span></div>{m.p!==null&&<div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}><div style={{height:"100%",width:`${m.p}%`,background:m.color,borderRadius:6,transition:"width 0.4s"}}/></div>}</div>)}</div>);})}</>}/>
@@ -1240,6 +1317,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [medDurationType,setMedDurationType]=useState("fixed");
       const [medDays,setMedDays]=useState(7);
       const [medNote,setMedNote]=useState("");
+      const [medStartDate,setMedStartDate]=useState("");
       const [saving,setSaving]=useState(false);
 
       function fmt12(t){
@@ -1259,13 +1337,14 @@ const {useState,useEffect,useRef,useCallback}=React;
       async function saveMed(){
         if(!medName.trim())return;
         setSaving(true);
-        const endDate=medDurationType==="fixed"?new Date(Date.now()+medDays*86400000).toISOString():null;
+        const startDate=medStartDate?new Date(medStartDate).toISOString():new Date().toISOString();
+        const endDate=medDurationType==="fixed"?new Date(new Date(startDate).getTime()+medDays*86400000).toISOString():null;
         await onAddMed({name:medName.trim(),babyId:medBabyId,freq:medFreq,times:medTimes,
           durationType:medDurationType,days:medDurationType==="fixed"?medDays:null,
-          startDate:new Date().toISOString(),endDate,note:medNote.trim(),paused:false,
+          startDate,endDate,note:medNote.trim(),paused:false,
           createdAt:new Date().toISOString()});
         setMedName("");setMedNote("");setMedFreq(1);setMedTimes(["08:00"]);
-        setMedDurationType("fixed");setMedDays(7);setSaving(false);setShowAdd(false);
+        setMedDurationType("fixed");setMedDays(7);setMedStartDate("");setSaving(false);setShowAdd(false);
       }
       const now=new Date(nowMs);
       const todayStr=now.toDateString();
@@ -1429,6 +1508,11 @@ const {useState,useEffect,useRef,useCallback}=React;
                     </div>
                   )}
                   <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Notes (optional)"}</div>
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Start Date"}</div>
+                  <input type="date" value={medStartDate} onChange={e=>setMedStartDate(e.target.value)}
+                    style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:4}}/>
+                  <div style={{fontSize:11,color:T.text3,marginBottom:12}}>{"Leave blank to start today"}</div>
+                  <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>{"Notes (optional)"}</div>
                   <input value={medNote} onChange={e=>setMedNote(e.target.value)} placeholder="e.g. with food"
                     style={{width:"100%",padding:"11px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:14}}/>
                   <div style={{display:"flex",gap:8}}>
@@ -1546,6 +1630,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [profileGestWeeks,setProfileGestWeeks]=useState("");
       const [profileBirthWeight,setProfileBirthWeight]=useState("");
       const [weightLogEntry,setWeightLogEntry]=useState("");
+      const [weightLogDate,setWeightLogDate]=useState("");
       const [weightLog,setWeightLog]=useState([]);
       const [editWeightId,setEditWeightId]=useState(null);
       const [editWeightVal,setEditWeightVal]=useState("");
@@ -1662,6 +1747,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       useEffect(()=>{if(babies.length>0&&!activeBabyId)setActiveBabyId(babies[0].id);},[babies]);
       useEffect(()=>{window.__medsRef=meds;},[meds]);
       useEffect(()=>{window.__logsRef=logs;},[logs]);
+      useEffect(()=>{window.__activitiesRef=activities;},[activities]);
 
       // Load AI chats for this user
       useEffect(()=>{
@@ -1706,8 +1792,12 @@ const {useState,useEffect,useRef,useCallback}=React;
         const diaperLogs=activities.filter(a=>a.babyId===babyId&&a.type==="diaper"&&new Date(a.startTime).getTime()>=Date.now()-14*86400000);
         const wetCount=diaperLogs.filter(a=>a.diaperType==="wet").length;
         const dirtyCount=diaperLogs.filter(a=>a.diaperType==="dirty").length;
+        const suckingLogs14=activities.filter(a=>a.babyId===babyId&&a.type==="sucking"&&new Date(a.startTime).getTime()>=Date.now()-14*86400000);
+        const totalSuckingMins=Math.round(suckingLogs14.reduce((s,a)=>s+(a.durationSecs||0),0)/60);
+        const avgSuckingMinsPerDay=suckingLogs14.length>0?Math.round(totalSuckingMins/14):0;
         return`Baby: ${b.name}, ${age} old, gender: ${b.gender||"not specified"}, feeding type: ${b.feedingType||"mixed"}, birth weight: ${b.birthWeight||"unknown"}kg, current weight: ${b.currentWeight||"unknown"}kg, premature: ${b.premature?"yes ("+b.gestationalWeeks+" weeks)":"no"}.
 Last 14 days feeding: ${last14.length} feeds, avg ${avgDay}ml/day, avg ${avgFeed}ml/feed. Milk: ${milkStr||"no data"}.
+Breastfeeding/sucking: ${suckingLogs14.length} sessions, ${totalSuckingMins} total mins, avg ${avgSuckingMinsPerDay} mins/day over last 14 days.
 Sleep: avg ${avgSleepHrs||"unknown"}h per session.
 Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
       }
@@ -1807,7 +1897,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
           }
           // Hunger alert check
           if(window.__babiesRef&&window.__logsRef){
-            const urgent=computeInsights(window.__babiesRef,window.__logsRef,window.__dismissedHungryRef||{},{}).filter(i=>i.urgent&&i.type==="hunger");
+            const urgent=computeInsights(window.__babiesRef,window.__logsRef,window.__activitiesRef||[],window.__dismissedHungryRef||{},{}).filter(i=>i.urgent&&i.type==="hunger");
             urgent.forEach(ins=>{
               const key="hf_"+ins.babyId+"_"+new Date(n).toDateString()+"_"+Math.floor(n/1800000);
               if(sessionStorage.getItem(key))return;
@@ -1863,7 +1953,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
         document.addEventListener('visibilitychange',onVisible);
         return()=>document.removeEventListener('visibilitychange',onVisible);
       },[familyId]);
-      const urgentCount=computeInsights(babies,logs,dismissedHungry,dismissedIntake).filter(i=>i.urgent).length;
+      const urgentCount=computeInsights(babies,logs,activities,dismissedHungry,dismissedIntake).filter(i=>i.urgent).length;
       function dismissIntake(babyId){setDismissedIntake(d=>({...d,[babyId]:true}));}
 
       // Existing user links to a partner's family via invite code
@@ -2179,7 +2269,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:22}}>
                   {MILK_TYPES.map(m=>{const s=milkType===m.value;return<button key={m.value} onClick={()=>setMilkType(m.value)} style={{padding:"17px 6px",background:s?m.color:T.bg2,border:`2.5px solid ${s?m.color:T.bord}`,borderRadius:18,color:s?"#fff":"#AAA",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",transform:s?"scale(1.04)":"scale(1)",boxShadow:s?`0 6px 18px ${m.color}44`:"none"}}>{m.label}</button>;})}
                 </div>
-                {milkType!=="Sucking"&&<>
+                {milkType!=="Sucking"&&ab?.feedingType!=="breastfed"&&<>
                 <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Amount</div>
                 <div style={{background:T.bg2,borderRadius:24,padding:"10px",marginBottom:22,display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>setAmount(a=>Math.max(5,a-10))} style={{width:70,height:70,borderRadius:16,background:T.bg3,border:"none",fontSize:30,color:T.text2,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
@@ -2265,7 +2355,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
 
             
 
-            {view==="insights"&&<InsightsView babies={babies} logs={logs}
+            {view==="insights"&&<InsightsView babies={babies} logs={logs} activities={activities}
   onLogFeed={bid=>{setActiveBabyId(bid);setView("log");}}
   onDismissHungry={bid=>setDismissedHungry(d=>({...d,[bid]:Date.now()}))}
   dismissedHungry={dismissedHungry}
@@ -2707,20 +2797,22 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                   )}
 
                   {/* Add weight entry */}
-                  <div style={{display:"flex",gap:8,marginBottom:14}}>
-                    <input type="number" step="0.01" value={weightLogEntry} onChange={e=>setWeightLogEntry(e.target.value)} placeholder="Current weight (kg)"
+                  <div style={{display:"flex",gap:8,marginBottom:6}}>
+                    <input type="number" step="0.01" value={weightLogEntry} onChange={e=>setWeightLogEntry(e.target.value)} placeholder="Weight (kg)"
                       style={{flex:1,padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3}}/>
-                    <button onClick={async()=>{
-                      if(!weightLogEntry)return;
-                      const entry={weight:Number(weightLogEntry),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString()};
-                      await addWeightEntry(profileBabyId,entry);
-                      await saveBaby({...pb,currentWeight:Number(weightLogEntry)});
-                      setWeightLogEntry("");
-                      const log=await getWeightLog(profileBabyId);setWeightLog(log);
-                    }} style={{padding:"10px 16px",background:"#7C5CBF",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                      {"+ Log"}
-                    </button>
+                    <input type="date" value={weightLogDate||new Date().toISOString().slice(0,10)} onChange={e=>setWeightLogDate(e.target.value)}
+                      style={{flex:1,padding:"10px 10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3}}/>
                   </div>
+                  <button onClick={async()=>{
+                    if(!weightLogEntry)return;
+                    const entry={weight:Number(weightLogEntry),date:weightLogDate||new Date().toISOString().slice(0,10),createdAt:new Date().toISOString()};
+                    await addWeightEntry(profileBabyId,entry);
+                    await saveBaby({...pb,currentWeight:Number(weightLogEntry)});
+                    setWeightLogEntry("");setWeightLogDate("");
+                    const log=await getWeightLog(profileBabyId);setWeightLog(log);
+                  }} style={{width:"100%",padding:"10px",background:"#7C5CBF",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",marginBottom:14}}>
+                    {"+ Log Weight"}
+                  </button>
 
                   {/* Weight history */}
                   {weightLog.map(entry=>(

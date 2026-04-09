@@ -522,7 +522,7 @@ const {useState,useEffect,useRef,useCallback}=React;
       const addWeightEntry=async(babyId,entry)=>db.collection(`families/${fref()}/babies/${babyId}/weightLog`).add(entry);
       const updateWeightEntry=async(babyId,id,data)=>db.collection(`families/${fref()}/babies/${babyId}/weightLog`).doc(id).set(data,{merge:true});
       const deleteWeightEntry=async(babyId,id)=>db.collection(`families/${fref()}/babies/${babyId}/weightLog`).doc(id).delete();
-      const getWeightLog=async(babyId)=>{const snap=await db.collection(`families/${fref()}/babies/${babyId}/weightLog`).orderBy("date","desc").get();return snap.docs.map(d=>({...d.data(),id:d.id}));};
+      const getWeightLog=async(babyId)=>{const snap=await db.collection(`families/${fref()}/babies/${babyId}/weightLog`).get();return snap.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>new Date(b.date)-new Date(a.date));};
       const addMed=async m=>db.collection(`families/${fref()}/meds`).add(m);
       const deleteMed=async id=>db.collection(`families/${fref()}/meds`).doc(id).delete();
       const updateMed=async(id,data)=>db.collection(`families/${fref()}/meds`).doc(id).update(data);
@@ -2803,13 +2803,17 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                     <input type="date" value={weightLogDate||new Date().toISOString().slice(0,10)} onChange={e=>setWeightLogDate(e.target.value)}
                       style={{flex:1,padding:"10px 10px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:13,fontFamily:"inherit",color:T.text,background:T.bg3}}/>
                   </div>
-                  <button onClick={async()=>{
+                  <button onClick={async(e)=>{
+                    e.currentTarget.textContent="Saving...";
+                    e.currentTarget.disabled=true;
                     if(!weightLogEntry)return;
-                    const entry={weight:Number(weightLogEntry),date:weightLogDate||new Date().toISOString().slice(0,10),createdAt:new Date().toISOString()};
-                    await addWeightEntry(profileBabyId,entry);
-                    await saveBaby({...pb,currentWeight:Number(weightLogEntry)});
-                    setWeightLogEntry("");setWeightLogDate("");
-                    const log=await getWeightLog(profileBabyId);setWeightLog(log);
+                    try{
+                      const entry={weight:Number(weightLogEntry),date:weightLogDate||new Date().toISOString().slice(0,10),createdAt:new Date().toISOString()};
+                      await addWeightEntry(profileBabyId,entry);
+                      await saveBaby({...pb,currentWeight:Number(weightLogEntry)});
+                      setWeightLogEntry("");setWeightLogDate("");
+                      const log=await getWeightLog(profileBabyId);setWeightLog(log);
+                    }catch(err){alert("Failed to save: "+err.message);}
                   }} style={{width:"100%",padding:"10px",background:"#7C5CBF",border:"none",borderRadius:12,color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",marginBottom:14}}>
                     {"+ Log Weight"}
                   </button>

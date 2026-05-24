@@ -2818,6 +2818,45 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                     {"+ Log Weight"}
                   </button>
 
+                  {/* Weight chart */}
+                  {weightLog.length>=2&&(()=>{
+                    const sorted=[...weightLog].sort((a,b)=>new Date(a.date)-new Date(b.date));
+                    const weights=sorted.map(e=>e.weight);
+                    const minW=Math.min(...weights)-0.2;
+                    const maxW=Math.max(...weights)+0.2;
+                    const W=300,H=80;
+                    const px=(i)=>i/(sorted.length-1)*(W-20)+10;
+                    const py=(w)=>H-((w-minW)/(maxW-minW))*H;
+                    const pts=sorted.map((e,i)=>`${px(i)},${py(e.weight)}`).join(" ");
+                    const pb2=sorted.map((e,i)=>`${px(i)},${py(e.weight)}`);
+                    const areaPath=`M ${pb2[0]} L ${pb2.slice(1).join(" L ")} L ${px(sorted.length-1)},${H} L ${px(0)},${H} Z`;
+                    return(
+                      <div style={{background:T.bg3,borderRadius:14,padding:"12px",marginBottom:12}}>
+                        <div style={{fontSize:11,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:8}}>{"Weight Trend"}</div>
+                        <svg width="100%" viewBox={`0 0 ${W} ${H+20}`} style={{overflow:"visible"}}>
+                          <defs>
+                            <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#7C5CBF" stopOpacity="0.3"/>
+                              <stop offset="100%" stopColor="#7C5CBF" stopOpacity="0"/>
+                            </linearGradient>
+                          </defs>
+                          <path d={areaPath} fill="url(#wg)"/>
+                          <polyline points={pts} fill="none" stroke="#7C5CBF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          {sorted.map((e,i)=>(
+                            <g key={i}>
+                              <circle cx={px(i)} cy={py(e.weight)} r="4" fill="#7C5CBF"/>
+                              <text x={px(i)} y={py(e.weight)-8} textAnchor="middle" fontSize="9" fill={T.text3}>{e.weight}kg</text>
+                            </g>
+                          ))}
+                          {sorted.map((e,i)=>(
+                            <text key={"d"+i} x={px(i)} y={H+14} textAnchor="middle" fontSize="8" fill={T.text3}>
+                              {new Date(e.date).toLocaleDateString([],{month:"short",day:"numeric"})}
+                            </text>
+                          ))}
+                        </svg>
+                      </div>
+                    );
+                  })()}
                   {/* Weight history */}
                   {weightLog.map(entry=>(
                     <div key={entry.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:T.bg3,borderRadius:12,marginBottom:8}}>

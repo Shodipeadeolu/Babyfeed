@@ -162,11 +162,20 @@ const {useState,useEffect,useRef,useCallback}=React;
     function calcAge(dob){
       if(!dob)return null;
       const d=new Date(dob),now=new Date();
-      const weeks=Math.floor((now-d)/604800000);
-      if(weeks<16)return`${weeks}w`;
-      const months=Math.floor((now-d)/2629800000);
-      if(months<24)return`${months}mo`;
-      return`${Math.floor(months/12)}y`;
+      const totalDays=Math.floor((now-d)/86400000);
+      const weeks=Math.floor(totalDays/7);
+      const days=totalDays%7;
+      if(weeks<16){
+        return days>0?`${weeks}w ${days}d`:`${weeks}w`;
+      }
+      const months=Math.floor(totalDays/30.44);
+      const remDays=totalDays-Math.floor(months*30.44);
+      if(months<24){
+        return remDays>0?`${months}mo ${remDays}d`:`${months}mo`;
+      }
+      const years=Math.floor(months/12);
+      const remMonths=months%12;
+      return remMonths>0?`${years}y ${remMonths}mo`:`${years}y`;
     }
     function predictWeight(weightLog){
       if(!weightLog||weightLog.length<2)return null;

@@ -1797,11 +1797,17 @@ const {useState,useEffect,useRef,useCallback}=React;
       useEffect(()=>{window.__logsRef=logs;},[logs]);
       useEffect(()=>{window.__activitiesRef=activities;},[activities]);
 
-      // Load AI chats for this user
+      // Load AI chats for this user and auto-load the most recent one
       useEffect(()=>{
         if(!user?.uid)return;
         return db.collection(`users/${user.uid}/aiChats`).orderBy("createdAt","desc").limit(20).onSnapshot(snap=>{
-          setAiChats(snap.docs.map(d=>({...d.data(),id:d.id})));
+          const chats=snap.docs.map(d=>({...d.data(),id:d.id}));
+          setAiChats(chats);
+          // Auto-load most recent chat if no active chat
+          if(chats.length>0&&!aiChatId&&aiMessages.length===0){
+            setAiChatId(chats[0].id);
+            setAiMessages(chats[0].messages||[]);
+          }
         });
       },[user?.uid]);
 

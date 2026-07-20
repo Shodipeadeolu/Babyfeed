@@ -46,7 +46,7 @@ exports.askAI = onRequest(async (req, res) => {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await client.messages.create({
       model: "claude-opus-4-8",
-      max_tokens: 350,
+      max_tokens: 700,
       system: systemPrompt || "You are a helpful baby care assistant.",
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
     });

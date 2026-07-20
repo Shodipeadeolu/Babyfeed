@@ -1870,7 +1870,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
             headers:{"Content-Type":"application/json"},
             body:JSON.stringify({
               messages:newMsgs,
-              systemPrompt:`You are BabyFeed AI, a baby care assistant. Answer in 2-4 short sentences max. Be direct, accurate and specific to the baby's data provided. No lengthy explanations or bullet lists unless asked. For medical concerns advise seeing a paediatrician. Never diagnose.\n\nBaby data:\n${babyCtx}`,
+              systemPrompt:`You are BabyFeed AI. Be extremely concise — 1 to 3 sentences only. Never use bullet points or lists. Give the direct answer first, no preamble. Use the baby's data below. For medical concerns, say "see your paediatrician."\n\nBaby data:\n${babyCtx}`,
               uid:user.uid,
               plan:aiPlan
             })

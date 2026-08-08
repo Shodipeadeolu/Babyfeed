@@ -3054,25 +3054,21 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                     if(!("serviceWorker" in navigator)){setShowSettings(false);return;}
                     setShowSettings(false);
                     const reg=await navigator.serviceWorker.ready;
-                    // Check if already waiting
                     if(reg.waiting){setUpdateReady(true);return;}
-                    // Fetch latest SW from server
-                    await reg.update();
-                    // If now waiting, show update
-                    if(reg.waiting){setUpdateReady(true);return;}
-                    // If installing, wait for it to reach installed
-                    if(reg.installing){
-                      await new Promise(resolve=>{
-                        reg.installing.addEventListener("statechange",function handler(e){
-                          if(e.target.state==="installed"){
-                            this.removeEventListener("statechange",handler);
-                            resolve();
-                          }
+                    // Listen for updatefound BEFORE calling update()
+                    const found=await new Promise(resolve=>{
+                      const timer=setTimeout(()=>resolve(false),5000);
+                      reg.addEventListener("updatefound",()=>{
+                        clearTimeout(timer);
+                        const sw=reg.installing;
+                        if(!sw){resolve(false);return;}
+                        sw.addEventListener("statechange",function(){
+                          if(this.state==="installed"){resolve(true);}
                         });
-                      });
-                      if(reg.waiting){setUpdateReady(true);return;}
-                    }
-                    // Truly up to date
+                      },{once:true});
+                      reg.update();
+                    });
+                    if(found||reg.waiting){setUpdateReady(true);return;}
                     const el=document.createElement("div");
                     el.style.cssText="position:fixed;bottom:120px;left:50%;transform:translateX(-50%);background:#34D399;color:#fff;padding:10px 20px;border-radius:12px;font-size:13px;font-weight:700;z-index:9999;";
                     el.textContent="✓ You're on the latest version";

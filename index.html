@@ -88,7 +88,11 @@ const {useState,useEffect,useRef,useCallback}=React;
       {label:"🥛 Formula",value:"Formula Milk",color:"#6B9DFF"},
       {label:"🔀 Mixed",  value:"Mixed",       color:"#A78BFA"},
       {label:"🫦 Sucking",value:"Sucking",     color:"#F59E0B"},
+      {label:"💧 Water",  value:"Water",       color:"#38BDF8"},
+      {label:"🥣 Solid",  value:"Solid",       color:"#34D399"},
     ];
+    const SOLID_PORTIONS=["Small","Medium","Large"];
+    const SOLID_REACTIONS=["😋 Liked","😐 OK","😒 Disliked","🚫 Refused"];
     const DIAPER_TYPES=[
       {label:"💧 Wet",  value:"wet",   color:"#60A5FA"},
       {label:"💩 Dirty",value:"dirty", color:"#92400E"},
@@ -1641,6 +1645,9 @@ const {useState,useEffect,useRef,useCallback}=React;
       const [activeBabyId,setActiveBabyId]=useState(null);
       const [amount,setAmount]=useState(60);
       const [milkType,setMilkType]=useState("Breast Milk");
+      const [solidFood,setSolidFood]=useState("");
+      const [solidPortion,setSolidPortion]=useState("Medium");
+      const [solidReaction,setSolidReaction]=useState("");
       const [view,setView]=useState("log");
       const [viewAnim,setViewAnim]=useState(false);
       function switchView(v){setViewAnim(true);setTimeout(()=>{setView(v);setViewAnim(false);},80);}
@@ -2030,7 +2037,9 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
       async function logFeed(amt,milk){
         const ts=editingTime&&customTime?new Date(customTime).toISOString():new Date().toISOString();
         const loggedBy=user.displayName||user.email?.split("@")[0]||"You";
-        await addLog({babyId:activeBabyId,amount:amt,milkType:milk,timestamp:ts,loggedBy});
+        const entry={babyId:activeBabyId,amount:milk==="Solid"?0:amt,milkType:milk,timestamp:ts,loggedBy};
+        if(milk==="Solid"){entry.solidFood=solidFood.trim()||"Solid food";entry.solidPortion=solidPortion;if(solidReaction)entry.solidReaction=solidReaction;}
+        await addLog(entry);
         setDismissedIntake(d=>{const n={...d};delete n[activeBabyId];return n;});
         setFlashSaved(true);setEditingTime(false);setTimeout(()=>setFlashSaved(false),2000);
         setDismissedHungry(d=>{const n={...d};delete n[activeBabyId];return n;});
@@ -2319,11 +2328,26 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                   </div>
                   {editingTime&&<input type="datetime-local" value={customTime} onChange={e=>setCustomTime(e.target.value)} style={{marginTop:12,width:"100%",padding:"11px 14px",border:"2px solid #FF6B9D",borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.dark?"#2D1525":"#FFF8FB",boxSizing:"border-box"}}/>}
                 </div>
-                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Milk Type</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:22}}>
-                  {MILK_TYPES.map(m=>{const s=milkType===m.value;return<button key={m.value} onClick={()=>setMilkType(m.value)} style={{padding:"17px 6px",background:s?m.color:T.bg2,border:`2.5px solid ${s?m.color:T.bord}`,borderRadius:18,color:s?"#fff":"#AAA",fontSize:14,fontWeight:800,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",transform:s?"scale(1.04)":"scale(1)",boxShadow:s?`0 6px 18px ${m.color}44`:"none"}}>{m.label}</button>;})}
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Feeding Type</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:22}}>
+                  {MILK_TYPES.map(m=>{const s=milkType===m.value;return<button key={m.value} onClick={()=>setMilkType(m.value)} style={{padding:"14px 4px",background:s?m.color:T.bg2,border:`2.5px solid ${s?m.color:T.bord}`,borderRadius:18,color:s?"#fff":"#AAA",fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s",transform:s?"scale(1.04)":"scale(1)",boxShadow:s?`0 6px 18px ${m.color}44`:"none"}}>{m.label}</button>;})}
                 </div>
-                {milkType!=="Sucking"&&ab?.feedingType!=="breastfed"&&<>
+                {milkType==="Solid"&&<>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Food Name</div>
+                <input value={solidFood} onChange={e=>setSolidFood(e.target.value)} placeholder="e.g. Pureed carrot, banana..." style={{width:"100%",padding:"12px 14px",border:`2px solid ${T.bord}`,borderRadius:14,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box",marginBottom:16,outline:"none"}}/>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Portion Size</div>
+                <div style={{display:"flex",gap:8,marginBottom:16}}>
+                  {SOLID_PORTIONS.map(p=>{const s=solidPortion===p;return<button key={p} onClick={()=>setSolidPortion(p)} style={{flex:1,padding:"12px 4px",background:s?"#34D399":T.bg2,border:`2px solid ${s?"#34D399":T.bord}`,borderRadius:14,color:s?"#fff":T.text2,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>{p}</button>;})}
+                </div>
+                <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Reaction <span style={{color:T.text3,fontWeight:400,textTransform:"none"}}>(optional)</span></div>
+                <div style={{display:"flex",gap:6,marginBottom:18,flexWrap:"wrap"}}>
+                  {SOLID_REACTIONS.map(r=>{const s=solidReaction===r;return<button key={r} onClick={()=>setSolidReaction(s?"":r)} style={{padding:"8px 12px",background:s?"#34D39922":T.bg2,border:`2px solid ${s?"#34D399":T.bord}`,borderRadius:20,color:s?"#34D399":T.text2,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>{r}</button>;})}
+                </div>
+                <button onClick={()=>logFeed(0,"Solid")} style={{width:"100%",padding:"19px",background:flashSaved?"#34D399":"linear-gradient(135deg,#34D399,#10B981)",border:"none",borderRadius:22,color:"#fff",fontSize:17,fontWeight:900,cursor:"pointer",fontFamily:"inherit",boxShadow:flashSaved?"0 8px 24px #34D39966":"0 8px 24px #34D39955",transition:"background 0.3s",marginBottom:12}}>
+                  {flashSaved?"✓  Logged!":"🥣 Log Solid Food"}
+                </button>
+                </>}
+                {milkType!=="Sucking"&&milkType!=="Solid"&&ab?.feedingType!=="breastfed"&&<>
                 <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:10}}>Amount</div>
                 <div style={{background:T.bg2,borderRadius:24,padding:"10px",marginBottom:22,display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>setAmount(a=>Math.max(5,a-10))} style={{width:70,height:70,borderRadius:16,background:T.bg3,border:"none",fontSize:30,color:T.text2,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>−</button>
@@ -2575,8 +2599,10 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                                   }} style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
                                     <div style={{width:44,height:44,borderRadius:14,background:(b?.color||"#eee")+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:13,fontWeight:900,color:b?.color}}>{b?.name?.[0]||"?"}</span></div>
                                     <div style={{flex:1}}>
-                                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                        <span style={{fontWeight:900,color:T.text,fontSize:16}}>{item.amount}ml</span>
+                                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                                        {item.milkType==="Solid"
+                                          ?<span style={{fontWeight:900,color:T.text,fontSize:15}}>{item.solidFood||"Solid food"} · {item.solidPortion||"Medium"}{item.solidReaction?` · ${item.solidReaction}`:""}</span>
+                                          :<span style={{fontWeight:900,color:T.text,fontSize:16}}>{item.amount}ml</span>}
                                         <span style={{fontSize:11,fontWeight:700,color:m?.color,background:(m?.color||"#eee")+"22",padding:"3px 10px",borderRadius:8}}>{item.milkType==="Breast Milk"?"Breast Milk":item.milkType.split(" ")[0]}</span>
                                       </div>
                                       <div style={{fontSize:12,color:T.text3,marginTop:3}}>{b?.name||"Unknown"}{" · "}{fmt(item.timestamp)}{item.loggedBy&&<span style={{marginLeft:6,background:"#F0EBF8",color:"#A78BFA",fontWeight:700,padding:"2px 8px",borderRadius:6,fontSize:11}}>👤 {item.loggedBy.split("@")[0]}</span>}</div>
@@ -2589,7 +2615,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                                     <div style={{fontSize:12,color:T.text3,fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:.8}}>✏️ Edit Feed</div>
                                     <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Time</div>
                                     <input type="datetime-local" value={editLogTime} onChange={e=>setEditLogTime(e.target.value)} style={{width:"100%",padding:"10px 14px",border:`2px solid ${T.bord}`,borderRadius:12,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg3,boxSizing:"border-box",marginBottom:12}}/>
-                                    <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Milk Type</div>
+                                    <div style={{fontSize:11,color:T.text3,marginBottom:6,fontWeight:600}}>Feeding Type</div>
                                     <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
                                       {MILK_TYPES.map(mt=>{const sel=editLogMilk===mt.value;return(
                                         <button key={mt.value} onClick={()=>setEditLogMilk(mt.value)}

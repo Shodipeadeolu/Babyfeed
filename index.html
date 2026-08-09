@@ -905,7 +905,8 @@ const {useState,useEffect,useRef,useCallback}=React;
       }
 
       const filteredBabies=dashBabyFilter==="all"?babies:babies.filter(b=>b.id===dashBabyFilter);
-      const recent=logs.filter(l=>{const ts=new Date(l.timestamp).getTime();return ts>=rangeStart&&ts<=rangeEnd&&(dashBabyFilter==="all"||l.babyId===dashBabyFilter);});
+      const allRecent=logs.filter(l=>{const ts=new Date(l.timestamp).getTime();return ts>=rangeStart&&ts<=rangeEnd&&(dashBabyFilter==="all"||l.babyId===dashBabyFilter);});
+      const recent=allRecent.filter(l=>l.milkType!=="Water"&&l.milkType!=="Solid");
       const gm=range<=14?"day":range<=90?"week":"month";
       function gk(ts){const d=new Date(ts);if(gm==="day")return d.toDateString();if(gm==="week"){const w=new Date(d);w.setDate(d.getDate()-d.getDay());return w.toDateString();}return`${d.getFullYear()}-${d.getMonth()}`;}
       function gl(k){if(gm==="day")return new Date(k).toLocaleDateString([],{weekday:"short"});if(gm==="week")return new Date(k).toLocaleDateString([],{month:"short",day:"numeric"});const[y,m]=k.split("-");return new Date(+y,+m).toLocaleDateString([],{month:"short",year:"2-digit"});}
@@ -964,7 +965,36 @@ const {useState,useEffect,useRef,useCallback}=React;
           <div style={{display:"flex",gap:10,marginBottom:14}}>
             {filteredBabies.map(b=>{const s=stats(b.id);return(<div key={b.id} style={{flex:1,background:T.bg2,borderRadius:18,padding:"14px",borderTop:`4px solid ${b.color}`}}><div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:8}}>{b.name}</div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{s.avg}<span style={{fontSize:11,color:T.text3,fontWeight:500}}>ml/day</span></div><div style={{fontSize:11,color:T.text3,marginTop:4}}>{s.feeds}{" feeds · ~"}{s.apf}{"ml each"}</div>{s.ai>0&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>avg every {s.ai>=60?`${Math.floor(s.ai/60)}h ${s.ai%60}m`:`${s.ai}m`}</div>}</div>);})}
           </div>
-          <C ch={<><SectionTitle t={`${gm==="day"?"Daily":gm==="week"?"Weekly":"Monthly"} Intake — ${rl}`}/><div style={{display:"flex",alignItems:"flex-end",gap:gm==="month"?6:3,height:120,overflowX:"auto",paddingBottom:2}}>{cd.map((d,i)=><div key={i} style={{flexShrink:0,minWidth:gm==="day"?0:36,flex:gm==="day"?1:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><div style={{fontSize:8,color:T.text3,fontWeight:600,marginBottom:2}}>{d.total>0?d.total:""}</div><div style={{width:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",height:90,gap:1}}>{babies.map(b=>{const h=d[b.id]>0?Math.max(4,Math.round(d[b.id]/mb*90)):0;return h>0?<div key={b.id} style={{width:"100%",height:h,background:b.color,borderRadius:4,opacity:.85}}/>:null;})}</div><div style={{fontSize:8,color:T.text3,fontWeight:700,marginTop:4,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div></div>)}</div><div style={{display:"flex",gap:12,marginTop:12,justifyContent:"center"}}>{babies.map(b=><div key={b.id} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:3,background:b.color}}/><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{b.name}</span></div>)}</div></>}/>
+          <C ch={<><SectionTitle t={`${gm==="day"?"Daily":gm==="week"?"Weekly":"Monthly"} Intake — ${rl}`}/><div style={{display:"flex",alignItems:"flex-end",gap:gm==="month"?6:3,height:140,overflowX:"auto",paddingBottom:2}}>{cd.map((d,i)=>{const activeBabies=babies.filter(b=>d[b.id]>0);return(<div key={i} style={{flexShrink:0,minWidth:gm==="day"?0:40,flex:gm==="day"?1:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><div style={{width:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",height:110,gap:1}}>{babies.map(b=>{const h=d[b.id]>0?Math.max(16,Math.round(d[b.id]/mb*100)):0;return h>0?<div key={b.id} style={{width:"100%",height:h,background:b.color,borderRadius:4,opacity:.9,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:7,color:"#fff",fontWeight:800,lineHeight:1}}>{d[b.id]}</span></div>:null;})}</div><div style={{fontSize:8,color:T.text3,fontWeight:700,marginTop:4,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div></div>);})}</div><div style={{display:"flex",gap:12,marginTop:12,justifyContent:"center"}}>{babies.map(b=><div key={b.id} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:3,background:b.color}}/><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{b.name}</span></div>)}</div></>}/>
+          {(()=>{
+            const today=new Date().toDateString();
+            const waterData=filteredBabies.map(b=>{
+              const wml=logs.filter(l=>l.babyId===b.id&&l.milkType==="Water"&&new Date(l.timestamp).toDateString()===today).reduce((s,l)=>s+l.amount,0);
+              const goal=b.waterGoal||300;
+              return{...b,wml,goal,pct:Math.min(1,wml/goal)};
+            }).filter(b=>b.wml>0||range===1);
+            if(waterData.length===0)return null;
+            return(<C ch={<><SectionTitle t="💧 Water Intake Today"/><div style={{display:"flex",gap:16,justifyContent:"center"}}>{waterData.map(b=>(
+              <div key={b.id} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                <div style={{position:"relative",width:56,height:80}}>
+                  <svg viewBox="0 0 56 80" width="56" height="80" style={{position:"absolute",top:0,left:0}}>
+                    <defs><clipPath id={`cup-clip-${b.id}`}><path d="M6,0 L50,0 L46,76 Q28,82 10,76 Z"/></clipPath></defs>
+                    <g clipPath={`url(#cup-clip-${b.id})`}>
+                      <rect x="0" y="0" width="56" height="80" fill={T.dark?"#1e2a38":"#e8f4fd"}/>
+                      <rect x="0" y={80-b.pct*76} width="56" height={b.pct*76} fill="#38BDF8" opacity="0.85">
+                        <animate attributeName="y" from="80" to={80-b.pct*76} dur="0.8s" fill="freeze"/>
+                      </rect>
+                    </g>
+                    <path d="M6,0 L50,0 L46,76 Q28,82 10,76 Z" fill="none" stroke="#38BDF8" strokeWidth="3"/>
+                    <text x="28" y="44" textAnchor="middle" fontSize="11" fontWeight="bold" fill={b.pct>0.5?"#fff":"#38BDF8"}>{b.wml}ml</text>
+                  </svg>
+                </div>
+                <div style={{fontSize:12,fontWeight:900,color:b.color}}>{b.name}</div>
+                <div style={{fontSize:10,color:T.text3}}>{b.wml} / {b.goal}ml</div>
+                <div style={{width:56,height:4,background:T.bg3,borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${b.pct*100}%`,background:"#38BDF8",borderRadius:4,transition:"width 0.5s"}}/></div>
+              </div>
+            ))}</div></>}/> );
+          })()}
           <C ch={<><SectionTitle t="Feeding Type Breakdown"/>{babies.map(b=>{const bd=mkbd(b.id);return bd.length===0?<div key={b.id} style={{fontSize:12,color:T.text3,marginBottom:12}}>{b.name}: no data</div>:(<div key={b.id} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:b.color,marginBottom:8}}>{b.name}</div>{bd.map(m=><div key={m.value} style={{marginBottom:6}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{m.label}</span><span style={{fontSize:11,color:m.color,fontWeight:800}}>{m.display||(m.p+"% · "+m.a+"ml")}</span></div>{m.p!==null&&<div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}><div style={{height:"100%",width:`${m.p}%`,background:m.color,borderRadius:6,transition:"width 0.4s"}}/></div>}</div>)}</div>);})}</>}/>
           <C ch={<><SectionTitle t="Diaper Summary"/>{(()=>{
             const DTYPES=[{value:"wet",label:"💧 Wet",color:"#60A5FA"},{value:"dirty",label:"💩 Dirty",color:"#A78BFA"},{value:"mixed",label:"🔀 Mixed",color:"#34D399"}];

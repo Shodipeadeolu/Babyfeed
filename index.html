@@ -592,10 +592,12 @@ const {useState,useEffect,useRef,useCallback}=React;
         const feedingType=b.feedingType||"mixed";
         const isBreastfedOnly=feedingType==="breastfed";
         const bl=logs.filter(l=>l.babyId===b.id);
-        const todayLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===today);
-        const yestLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===yesterday);
-        const week7=bl.filter(l=>new Date(l.timestamp).getTime()>=now-7*86400000);
-        const week14=bl.filter(l=>new Date(l.timestamp).getTime()>=now-14*86400000&&new Date(l.timestamp).getTime()<now-7*86400000);
+        const isFeed=l=>l.milkType!=="Water"&&l.milkType!=="Solid";
+        const todayLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===today&&isFeed(l));
+        const yestLogs=bl.filter(l=>new Date(l.timestamp).toDateString()===yesterday&&isFeed(l));
+        const week7=bl.filter(l=>new Date(l.timestamp).getTime()>=now-7*86400000&&isFeed(l));
+        const week14=bl.filter(l=>new Date(l.timestamp).getTime()>=now-14*86400000&&new Date(l.timestamp).getTime()<now-7*86400000&&isFeed(l));
+        const todayWater=bl.filter(l=>new Date(l.timestamp).toDateString()===today&&l.milkType==="Water").reduce((s,l)=>s+l.amount,0);
 
         // Sucking sessions for this baby
         const suckingActs=(activities||[]).filter(a=>a.babyId===b.id&&a.type==="sucking");
@@ -625,11 +627,12 @@ const {useState,useEffect,useRef,useCallback}=React;
         } else {
           // Mixed or formula: show ml + sucking duration if any
           const suckingSub=todaySuckingMins>0?` · ${todaySuckingMins}m sucking`:"";
+          const waterSub=todayWater>0?` · 💧${todayWater}ml water`:"";
           insights.push({
             babyId:b.id,type:"daily",
             title:`${b.name}'s Day`,
             value:`${todayTotal}ml`,
-            sub:`${todayLogs.length} feeds today${suckingSub}`,
+            sub:`${todayLogs.length} feeds today${suckingSub}${waterSub}`,
             icon:"📊",color:b.color,
             detail:yestTotal>0?`${todayTotal>yestTotal?"↑":"↓"} vs ${yestTotal}ml yesterday`:null
           });
@@ -962,7 +965,7 @@ const {useState,useEffect,useRef,useCallback}=React;
             {filteredBabies.map(b=>{const s=stats(b.id);return(<div key={b.id} style={{flex:1,background:T.bg2,borderRadius:18,padding:"14px",borderTop:`4px solid ${b.color}`}}><div style={{fontSize:13,fontWeight:900,color:b.color,marginBottom:8}}>{b.name}</div><div style={{fontSize:22,fontWeight:900,color:T.text}}>{s.avg}<span style={{fontSize:11,color:T.text3,fontWeight:500}}>ml/day</span></div><div style={{fontSize:11,color:T.text3,marginTop:4}}>{s.feeds}{" feeds · ~"}{s.apf}{"ml each"}</div>{s.ai>0&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>avg every {s.ai>=60?`${Math.floor(s.ai/60)}h ${s.ai%60}m`:`${s.ai}m`}</div>}</div>);})}
           </div>
           <C ch={<><SectionTitle t={`${gm==="day"?"Daily":gm==="week"?"Weekly":"Monthly"} Intake — ${rl}`}/><div style={{display:"flex",alignItems:"flex-end",gap:gm==="month"?6:3,height:120,overflowX:"auto",paddingBottom:2}}>{cd.map((d,i)=><div key={i} style={{flexShrink:0,minWidth:gm==="day"?0:36,flex:gm==="day"?1:"none",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}><div style={{fontSize:8,color:T.text3,fontWeight:600,marginBottom:2}}>{d.total>0?d.total:""}</div><div style={{width:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",height:90,gap:1}}>{babies.map(b=>{const h=d[b.id]>0?Math.max(4,Math.round(d[b.id]/mb*90)):0;return h>0?<div key={b.id} style={{width:"100%",height:h,background:b.color,borderRadius:4,opacity:.85}}/>:null;})}</div><div style={{fontSize:8,color:T.text3,fontWeight:700,marginTop:4,textAlign:"center",whiteSpace:"nowrap"}}>{d.label}</div></div>)}</div><div style={{display:"flex",gap:12,marginTop:12,justifyContent:"center"}}>{babies.map(b=><div key={b.id} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:10,height:10,borderRadius:3,background:b.color}}/><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{b.name}</span></div>)}</div></>}/>
-          <C ch={<><SectionTitle t="Milk Type Breakdown"/>{babies.map(b=>{const bd=mkbd(b.id);return bd.length===0?<div key={b.id} style={{fontSize:12,color:T.text3,marginBottom:12}}>{b.name}: no data</div>:(<div key={b.id} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:b.color,marginBottom:8}}>{b.name}</div>{bd.map(m=><div key={m.value} style={{marginBottom:6}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{m.label}</span><span style={{fontSize:11,color:m.color,fontWeight:800}}>{m.display||(m.p+"% · "+m.a+"ml")}</span></div>{m.p!==null&&<div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}><div style={{height:"100%",width:`${m.p}%`,background:m.color,borderRadius:6,transition:"width 0.4s"}}/></div>}</div>)}</div>);})}</>}/>
+          <C ch={<><SectionTitle t="Feeding Type Breakdown"/>{babies.map(b=>{const bd=mkbd(b.id);return bd.length===0?<div key={b.id} style={{fontSize:12,color:T.text3,marginBottom:12}}>{b.name}: no data</div>:(<div key={b.id} style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:b.color,marginBottom:8}}>{b.name}</div>{bd.map(m=><div key={m.value} style={{marginBottom:6}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:11,color:T.text2,fontWeight:600}}>{m.label}</span><span style={{fontSize:11,color:m.color,fontWeight:800}}>{m.display||(m.p+"% · "+m.a+"ml")}</span></div>{m.p!==null&&<div style={{background:T.bg3,borderRadius:6,height:8,overflow:"hidden"}}><div style={{height:"100%",width:`${m.p}%`,background:m.color,borderRadius:6,transition:"width 0.4s"}}/></div>}</div>)}</div>);})}</>}/>
           <C ch={<><SectionTitle t="Diaper Summary"/>{(()=>{
             const DTYPES=[{value:"wet",label:"💧 Wet",color:"#60A5FA"},{value:"dirty",label:"💩 Dirty",color:"#A78BFA"},{value:"mixed",label:"🔀 Mixed",color:"#34D399"}];
             const allDiapers=(activities||[]).filter(a=>a.type==="diaper"&&new Date(a.startTime).getTime()>=rangeStart);
@@ -1980,8 +1983,10 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
       const mc=MILK_TYPES.find(m=>m.value===milkType)?.color||"#FF6B9D";
       const bl=logs.filter(l=>l.babyId===activeBabyId);
       const ll=[...bl].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))[0];
-      const tl=bl.filter(l=>new Date(l.timestamp).toDateString()===new Date().toDateString());
+      const tl=bl.filter(l=>new Date(l.timestamp).toDateString()===new Date().toDateString()&&l.milkType!=="Water"&&l.milkType!=="Solid");
       const tt=tl.reduce((s,l)=>s+l.amount,0);
+      const twl=bl.filter(l=>new Date(l.timestamp).toDateString()===new Date().toDateString()&&l.milkType==="Water");
+      const twt=twl.reduce((s,l)=>s+l.amount,0);
       const at=timers[activeBabyId];
       const llms=ll?new Date(ll.timestamp).getTime():null;
       const nfms=llms&&at?.enabled?llms+at.totalMins*60000:null;
@@ -2315,6 +2320,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                     <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Today total</div>
                     <div style={{fontSize:28,fontWeight:900,color:ab.color,lineHeight:1.1,marginTop:4}}>{tt}<span style={{fontSize:13,fontWeight:500,color:T.text3}}>ml</span></div>
                     <div style={{fontSize:11,color:T.text3}}>{tl.length} feed{tl.length!==1?"s":""}</div>
+                    {twt>0&&<div style={{fontSize:11,color:"#38BDF8",fontWeight:700,marginTop:2}}>💧 {twt}ml water</div>}
                   </div>
                 </div>
                 <div style={{background:T.bg2,borderRadius:16,padding:"12px 18px",marginBottom:18}}>
@@ -2334,7 +2340,11 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
                 </div>
                 {milkType==="Solid"&&<>
                 <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Food Name</div>
-                <input value={solidFood} onChange={e=>setSolidFood(e.target.value)} placeholder="e.g. Pureed carrot, banana..." style={{width:"100%",padding:"12px 14px",border:`2px solid ${T.bord}`,borderRadius:14,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box",marginBottom:16,outline:"none"}}/>
+                {(()=>{const prevFoods=[...new Set(logs.filter(l=>l.babyId===activeBabyId&&l.milkType==="Solid"&&l.solidFood).map(l=>l.solidFood))].slice(0,8);return(<>
+                <input list="solid-foods-list" value={solidFood} onChange={e=>setSolidFood(e.target.value)} placeholder="e.g. Pureed carrot, banana..." style={{width:"100%",padding:"12px 14px",border:`2px solid ${T.bord}`,borderRadius:14,fontSize:14,fontFamily:"inherit",color:T.text,background:T.bg2,boxSizing:"border-box",marginBottom:prevFoods.length>0&&!solidFood?8:16,outline:"none"}}/>
+                <datalist id="solid-foods-list">{prevFoods.map(f=><option key={f} value={f}/>)}</datalist>
+                {prevFoods.length>0&&!solidFood&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>{prevFoods.map(f=><button key={f} onClick={()=>setSolidFood(f)} style={{padding:"5px 12px",background:T.bg3,border:`1.5px solid ${T.bord}`,borderRadius:20,color:T.text2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{f}</button>)}</div>}
+                </>);})()}
                 <div style={{fontSize:10,color:T.text3,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Portion Size</div>
                 <div style={{display:"flex",gap:8,marginBottom:16}}>
                   {SOLID_PORTIONS.map(p=>{const s=solidPortion===p;return<button key={p} onClick={()=>setSolidPortion(p)} style={{flex:1,padding:"12px 4px",background:s?"#34D399":T.bg2,border:`2px solid ${s?"#34D399":T.bord}`,borderRadius:14,color:s?"#fff":T.text2,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>{p}</button>;})}

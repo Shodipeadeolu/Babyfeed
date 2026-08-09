@@ -990,7 +990,7 @@ const {useState,useEffect,useRef,useCallback}=React;
                   </svg>
                 </div>
                 <div style={{fontSize:12,fontWeight:900,color:b.color}}>{b.name}</div>
-                <div style={{fontSize:10,color:T.text3}}>{b.wml} / {b.goal}ml</div>
+                <button onClick={()=>{const v=prompt(`Daily water goal for ${b.name} (ml):`,b.goal);if(v&&!isNaN(v)&&Number(v)>0){const baby=babies.find(x=>x.id===b.id);if(baby)saveBaby({...baby,waterGoal:Number(v)});}}} style={{fontSize:10,color:"#38BDF8",fontWeight:700,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",textDecoration:"underline dotted"}}>{b.wml} / {b.goal}ml ✏️</button>
                 <div style={{width:56,height:4,background:T.bg3,borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${b.pct*100}%`,background:"#38BDF8",borderRadius:4,transition:"width 0.5s"}}/></div>
               </div>
             ))}</div></>}/> );

@@ -874,7 +874,7 @@ const {useState,useEffect,useRef,useCallback}=React;
     }
 
     // ── DASHBOARD ─────────────────────────────────────────────
-    function DashboardView({babies,logs,activities}){
+    function DashboardView({babies,logs,activities,saveBaby}){
       const T=useT();
       const [filterMode,setFilterMode]=useState("today");
       const [dashBabyFilter,setDashBabyFilter]=useState("all");
@@ -2480,7 +2480,7 @@ Diapers: ${wetCount} wet, ${dirtyCount} dirty over 14 days.`;
               dismissedIntake={dismissedIntake}
               onDismissIntake={dismissIntake}
 />}
-            {view==="dashboard"&&<DashboardView babies={babies} logs={logs} activities={activities}/>}
+            {view==="dashboard"&&<DashboardView babies={babies} logs={logs} activities={activities} saveBaby={saveBaby}/>}
             {view==="meds"&&<MedsView babies={babies} meds={meds} onAddMed={handleAddMed} onDeleteMed={handleDeleteMed} onConfirmDose={handleConfirmDose} onTogglePause={handleTogglePause} nowMs={nowMs}/> }
 
             {view==="ai"&&(
